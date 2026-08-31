@@ -1,0 +1,18 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+.idea/
+.vscode/
+Thumbs.db
+Desktop.ini
+*.tmp
+*.part
+
+# Local application settings are private, machine-specific runtime state.
+config/settings.json
