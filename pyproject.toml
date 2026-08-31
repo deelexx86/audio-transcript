@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "audio-transcript"
+version = "0.1.0"
+description = "Local Windows audio transcription utility"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "PySide6>=6.8,<7",
+    "av>=13,<17",
+    "faster-whisper>=1.1,<2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10"]
+
+[project.scripts]
+audio-transcript = "audio_transcript.app:main"
+audio-transcript-models = "audio_transcript.bootstrap_models:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
