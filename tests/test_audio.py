@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import av
+import pytest
 
 from audio_transcript.audio import (
     AudioDecodeError,
@@ -14,7 +15,7 @@ from audio_transcript.audio import (
 
 
 def test_supported_formats_and_non_recursive_scan(tmp_path: Path) -> None:
-    names = ["voice.OGG", "song.mp3", "memo.m4a", "clip.wav", "telegram.webm"]
+    names = ["voice.OGG", "song.mp3", "memo.m4a", "clip.wav", "telegram.webm", "phone.AMR"]
     for name in names:
         (tmp_path / name).touch()
     (tmp_path / "notes.txt").touch()
@@ -61,3 +62,25 @@ def test_corrupt_audio_has_actionable_error(tmp_path: Path) -> None:
         assert "Could not decode audio file" in str(exc)
     else:
         raise AssertionError("corrupt audio unexpectedly decoded")
+
+
+@pytest.mark.parametrize("header,frame_size,sample_rate", [(b"#!AMR\n", 13, 8000), (b"#!AMR-WB\n", 18, 16000)])
+def test_amr_decodes_through_pyav_and_whisper(tmp_path, header, frame_size, sample_rate):
+    from faster_whisper.audio import decode_audio
+
+    source = tmp_path / "запись.AMR"
+    # Storage-format mode-0 speech frames with zero payload; no binary fixture required.
+    source.write_bytes(header + (b"\x04" + bytes(frame_size - 1)) * 50)
+    assert probe_duration(source, decode_first_frame=True) == pytest.approx(1.0)
+    with av.open(str(source)) as container:
+        frames = list(container.decode(audio=0))
+    assert sum(frame.samples for frame in frames) == sample_rate
+    decoded = decode_audio(str(source), sampling_rate=16000)
+    assert len(decoded) == 16000
+
+
+def test_corrupt_amr_is_reported(tmp_path):
+    source = tmp_path / "broken.amr"
+    source.write_bytes(b"not audio")
+    with pytest.raises(AudioDecodeError, match="Could not decode"):
+        probe_duration(source, decode_first_frame=True)

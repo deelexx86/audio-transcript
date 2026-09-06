@@ -5,7 +5,7 @@ from pathlib import Path
 import av
 
 
-SUPPORTED_EXTENSIONS = frozenset({".ogg", ".mp3", ".m4a", ".wav", ".webm"})
+SUPPORTED_EXTENSIONS = frozenset({".ogg", ".mp3", ".m4a", ".wav", ".webm", ".amr"})
 
 
 class AudioDecodeError(RuntimeError):

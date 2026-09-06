@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Iterable
@@ -37,6 +38,7 @@ class QueueItem:
     language: str | None = None
     model_name: str | None = None
     id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    added_at: datetime = field(default_factory=lambda: datetime.now().astimezone())
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,3 +98,28 @@ class QueueManager:
 
     def retryable_items(self) -> list[QueueItem]:
         return [item for item in self.items if item.status in RETRYABLE_STATUSES]
+
+    def move_ids(self, item_ids: Iterable[str], offset: int) -> None:
+        """Move selected rows one step, preserving their relative order."""
+        if offset not in (-1, 1):
+            raise ValueError("offset must be -1 or 1")
+        selected = set(item_ids)
+        indices = range(len(self.items)) if offset == -1 else range(len(self.items) - 1, -1, -1)
+        for index in indices:
+            target = index + offset
+            if (
+                self.items[index].id in selected
+                and 0 <= target < len(self.items)
+                and self.items[target].id not in selected
+            ):
+                self.items[index], self.items[target] = self.items[target], self.items[index]
+
+    def sort_by(self, field_name: str, *, descending: bool = False) -> None:
+        keys = {
+            "file": lambda item: item.source.name.casefold(),
+            "duration": lambda item: item.duration if item.duration is not None else -1,
+            "speaker": lambda item: item.speaker.casefold(),
+            "status": lambda item: item.status.value,
+            "added": lambda item: item.added_at,
+        }
+        self.items.sort(key=keys[field_name], reverse=descending)

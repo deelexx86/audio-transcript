@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QThread, Qt, QUrl
+from PySide6.QtCore import QItemSelectionModel, QThread, Qt, QUrl
 from PySide6.QtGui import QCloseEvent, QDesktopServices, QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import (
     QApplication,
@@ -42,12 +42,15 @@ class MainWindow(QMainWindow):
         self.settings = self.settings_store.load()
         self.queue = QueueManager()
         self._row_by_id: dict[str, int] = {}
+        self._sort_column: int | None = None
+        self._sort_descending = False
         self._processing = False
         self._closing_after_stop = False
         self._batch_stopped = False
         self._thread: QThread | None = None
         self._worker: BatchWorker | None = None
         self._build_ui()
+        self.setMinimumHeight(max(560, self.minimumSizeHint().height()))
         self._restore_settings()
         self._update_actions()
 
@@ -116,12 +119,22 @@ class MainWindow(QMainWindow):
         queue_layout = QVBoxLayout(queue_panel)
         queue_layout.setContentsMargins(0, 0, 0, 0)
         queue_layout.setSpacing(7)
-        drop_hint = QLabel("Drop audio files here  •  OGG, MP3, M4A, WAV, WEBM")
+        drop_hint = QLabel("Drop audio files here  •  OGG, MP3, M4A, WAV, WEBM, AMR")
         drop_hint.setObjectName("dropHint")
         drop_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         queue_layout.addWidget(drop_hint)
-        self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(("File", "Duration", "Speaker", "Status"))
+        ordering_layout = QHBoxLayout()
+        self.move_up_button = QPushButton("Move Up")
+        self.move_down_button = QPushButton("Move Down")
+        ordering_layout.addWidget(self.move_up_button)
+        ordering_layout.addWidget(self.move_down_button)
+        ordering_layout.addWidget(QLabel("Click a column header to sort"))
+        ordering_layout.addStretch()
+        queue_layout.addLayout(ordering_layout)
+        self.table = QTableWidget(0, 5)
+        self.table.setHorizontalHeaderLabels(("File", "Duration", "Speaker", "Status", "Added"))
+        self.table.horizontalHeader().setSectionsClickable(True)
+        self.table.horizontalHeader().sectionClicked.connect(self._sort_queue)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
         self.table.setAlternatingRowColors(True)
@@ -130,9 +143,12 @@ class MainWindow(QMainWindow):
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
         self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        self.table.setColumnWidth(2, 190)
+        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.setColumnWidth(2, 120)
+        self.table.horizontalHeaderItem(4).setToolTip("Local date and time added to this queue")
         self.table.setMinimumHeight(175)
         queue_layout.addWidget(self.table)
+        queue_panel.setMinimumHeight(queue_panel.minimumSizeHint().height())
         self.splitter.addWidget(queue_panel)
 
         preview_panel = QWidget()
@@ -153,7 +169,9 @@ class MainWindow(QMainWindow):
         self.preview.setPlaceholderText("Select a completed file to inspect its transcript.")
         self.preview.setMinimumHeight(130)
         preview_layout.addWidget(self.preview)
+        preview_panel.setMinimumHeight(preview_panel.minimumSizeHint().height())
         self.splitter.addWidget(preview_panel)
+        self.splitter.setChildrenCollapsible(False)
         self.splitter.setStretchFactor(0, 3)
         self.splitter.setStretchFactor(1, 2)
         outer.addWidget(self.splitter, 1)
@@ -216,6 +234,8 @@ class MainWindow(QMainWindow):
         self.inbox_button.clicked.connect(self._add_inbox)
         self.remove_button.clicked.connect(self._remove_selected)
         self.clear_button.clicked.connect(self._clear_queue)
+        self.move_up_button.clicked.connect(lambda: self._move_selected(-1))
+        self.move_down_button.clicked.connect(lambda: self._move_selected(1))
         self.transcribe_button.clicked.connect(self._start_batch)
         self.stop_button.clicked.connect(self._stop_batch)
         self.copy_button.clicked.connect(self._copy_transcript)
@@ -281,7 +301,11 @@ class MainWindow(QMainWindow):
         self._add_paths(scan_folder(INBOX_DIR))
 
     def _add_paths(self, paths: list[str | Path]) -> None:
+        if self._processing:
+            return
         result = self.queue.add_paths(paths, self.speaker_edit.text())
+        if result.added:
+            self._reset_sort_indicator()
         for item in result.added:
             try:
                 item.duration = probe_duration(item.source)
@@ -317,9 +341,62 @@ class MainWindow(QMainWindow):
         speaker_cell = QTableWidgetItem(item.speaker)
         status_cell = QTableWidgetItem(item.status.value)
         status_cell.setFlags(status_cell.flags() & ~Qt.ItemFlag.ItemIsEditable)
-        for column, cell in enumerate((file_cell, duration_cell, speaker_cell, status_cell)):
+        added_cell = QTableWidgetItem(item.added_at.strftime("%Y-%m-%d %H:%M:%S"))
+        added_cell.setFlags(added_cell.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        added_cell.setToolTip(item.added_at.isoformat(timespec="microseconds"))
+        for column, cell in enumerate((file_cell, duration_cell, speaker_cell, status_cell, added_cell)):
             self.table.setItem(row, column, cell)
         self._row_by_id[item.id] = row
+
+    def _reset_sort_indicator(self) -> None:
+        self._sort_column = None
+        self.table.horizontalHeader().setSortIndicatorShown(False)
+
+    def _move_selected(self, offset: int) -> None:
+        if self._processing:
+            return
+        self.queue.move_ids(self._selected_ids(), offset)
+        self._reset_sort_indicator()
+        self._render_queue_order()
+
+    def _sort_queue(self, column: int) -> None:
+        if self._processing:
+            return
+        self._sort_descending = not self._sort_descending if self._sort_column == column else False
+        self._sort_column = column
+        self.queue.sort_by(
+            ("file", "duration", "speaker", "status", "added")[column],
+            descending=self._sort_descending,
+        )
+        header = self.table.horizontalHeader()
+        header.setSortIndicator(
+            column,
+            Qt.SortOrder.DescendingOrder if self._sort_descending else Qt.SortOrder.AscendingOrder,
+        )
+        header.setSortIndicatorShown(True)
+        self._render_queue_order()
+
+    def _render_queue_order(self) -> None:
+        selected_ids = set(self._selected_ids())
+        current = self._selected_item()
+        self.table.blockSignals(True)
+        self.table.setRowCount(0)
+        self._row_by_id.clear()
+        for item in self.queue.items:
+            self._append_row(item)
+            self._refresh_row(item)
+        if current:
+            self.table.setCurrentCell(
+                self._row_by_id[current.id], 0, QItemSelectionModel.SelectionFlag.NoUpdate
+            )
+        for item_id in selected_ids:
+            index = self.table.model().index(self._row_by_id[item_id], 0)
+            self.table.selectionModel().select(
+                index,
+                QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows,
+            )
+        self.table.blockSignals(False)
+        self._show_selected()
 
     def _rebuild_row_map(self) -> None:
         self._row_by_id = {}
@@ -357,6 +434,7 @@ class MainWindow(QMainWindow):
         self._update_actions()
 
     def _clear_queue(self) -> None:
+        self._reset_sort_indicator()
         self.queue.clear()
         self.table.setRowCount(0)
         self._row_by_id.clear()
@@ -373,6 +451,8 @@ class MainWindow(QMainWindow):
         item = self.queue.get(str(id_cell.data(Qt.ItemDataRole.UserRole)))
         if item:
             item.speaker = cell.text().strip()
+            if self._sort_column == 2:
+                self._reset_sort_indicator()
 
     def _start_batch(self) -> None:
         retryable = self.queue.retryable_items()
@@ -381,6 +461,7 @@ class MainWindow(QMainWindow):
         profile = PROFILES_BY_KEY[str(self.model_combo.currentData())]
         output_mode = str(self.output_combo.currentData())
         self._processing = True
+        self._reset_sort_indicator()
         for item in retryable:
             item.status = QueueStatus.QUEUED
             item.progress = 0
@@ -524,7 +605,7 @@ class MainWindow(QMainWindow):
     def _update_actions(self) -> None:
         selected = self._selected_item()
         has_items = bool(self.queue.items)
-        selected_ids = self._selected_ids()
+        selected_ids = set(self._selected_ids())
         retryable = bool(self.queue.retryable_items())
         for widget in (
             self.add_files_button,
@@ -536,6 +617,19 @@ class MainWindow(QMainWindow):
         ):
             widget.setEnabled(not self._processing)
         self.remove_button.setEnabled(not self._processing and bool(selected_ids))
+        movable_up = any(
+            item.id in selected_ids and index > 0
+            and self.queue.items[index - 1].id not in selected_ids
+            for index, item in enumerate(self.queue.items)
+        )
+        movable_down = any(
+            item.id in selected_ids and index + 1 < len(self.queue.items)
+            and self.queue.items[index + 1].id not in selected_ids
+            for index, item in enumerate(self.queue.items)
+        )
+        self.move_up_button.setEnabled(not self._processing and movable_up)
+        self.move_down_button.setEnabled(not self._processing and movable_down)
+        self.table.horizontalHeader().setEnabled(not self._processing)
         self.clear_button.setEnabled(not self._processing and has_items)
         self.transcribe_button.setEnabled(not self._processing and retryable)
         self.stop_button.setEnabled(self._processing and bool(self._worker))

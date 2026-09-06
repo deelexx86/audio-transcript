@@ -41,14 +41,17 @@ Double-click `run.bat`. It starts the desktop application with `.venv\Scripts\py
 2. Optionally enter a default speaker. Each queued file's speaker remains editable.
 3. Choose **Workspace / transcripts** or **Same folder as source**.
 4. Drop files into the window, use **+ Files**, use non-recursive **+ Folder**, or scan `inbox\`.
-5. Select **Transcribe**. Files run sequentially while the window remains responsive.
-6. Select a completed row to preview, **Copy** its clean text, or **Open Folder** for its artifacts.
+5. Arrange the queue with **Move Up / Move Down** (multiple rows may be selected), or click any column header to sort ascending; click again for descending. **Added** records the local date/time of addition to this session, not the file modification time.
+6. Select **Transcribe**. Files run sequentially in the displayed order while the window remains responsive. Reordering is disabled during processing.
+7. Select a completed row to preview, **Copy** its clean text, or **Open Folder** for its artifacts.
 
 **Stop** requests safe cancellation of the current batch. Completed outputs are preserved, no further queued file starts, and remaining queued items can be restarted. Remove and Clear affect only the UI queue; source audio and generated artifacts are never deleted.
 
+Sorting is a one-time queue action. Newly added files append at the end, and manual moves override the previous sort. Unknown durations sort before known durations in ascending order. The queue and addition timestamps are session-only and are not restored after restarting.
+
 ## Inputs and local folders
 
-Supported input formats are `.ogg` (including Telegram Ogg/Opus), `.mp3`, `.m4a`, `.wav`, and `.webm`. Source files may remain anywhere on the local filesystem and are never copied, moved, renamed, or deleted by the app.
+Supported input formats are `.ogg` (including Telegram Ogg/Opus), `.mp3`, `.m4a`, `.wav`, `.webm`, and `.amr` (AMR-NB / AMR-WB, decoded locally by the existing PyAV dependency). Source files may remain anywhere on the local filesystem and are never copied, moved, renamed, or deleted by the app.
 
 - `inbox\` is an optional staging folder for saved voice messages. The Inbox action scans only that folder, not subfolders.
 - `models\` contains the two local speech-to-text models.

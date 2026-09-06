@@ -59,5 +59,107 @@ def test_main_window_workflow_controls_and_resize(monkeypatch, tmp_path: Path) -
     window.resize(820, 600)
     app.processEvents()
     assert window.size().width() == 820
-    assert window.size().height() == 600
+    assert window.size().height() >= 600
+    assert window.table.height() >= window.table.minimumHeight()
+    assert window.preview.height() >= window.preview.minimumHeight()
+    assert window.splitter.height() >= sum(
+        window.splitter.widget(index).minimumHeight() for index in range(2)
+    ) + window.splitter.handleWidth()
+    window.close()
+
+
+def test_ordering_preserves_selection_preview_and_row_identity(tmp_path):
+    from PySide6.QtCore import QItemSelectionModel, Qt
+    from PySide6.QtTest import QTest
+
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow(SettingsStore(tmp_path / "settings.json"))
+    window.show()
+    paths = [tmp_path / name for name in ("z.amr", "a.wav", "b.ogg")]
+    for path in paths:
+        path.touch()
+    window._add_paths(paths)
+    a, b, c = window.queue.items
+    from datetime import timedelta
+    b.added_at = a.added_at + timedelta(seconds=1)
+    c.added_at = a.added_at + timedelta(seconds=2)
+    a.status = QueueStatus.DONE
+    a.transcript = "Selected transcript"
+    window._refresh_row(a)
+    window._show_selected()
+    window.move_down_button.click()
+    assert window.queue.items == [b, a, c]
+    assert window._selected_item() is a
+    assert window._selected_ids() == [a.id]
+    assert window.preview.toPlainText() == a.transcript
+    header = window.table.horizontalHeader()
+    app.processEvents()
+    # Exercise the actual header click, not Qt's independent visual-only sorting.
+    from PySide6.QtCore import QPoint
+    position = QPoint(header.sectionViewportPosition(0) + 10, header.height() // 2)
+    QTest.mouseClick(header.viewport(), Qt.MouseButton.LeftButton, pos=position)
+    assert window.queue.items == [b, c, a]
+    assert window._selected_item() is a
+    window.table.item(0, 2).setText("Speaker B")
+    assert b.speaker == "Speaker B"
+    window._on_state_changed(c.id, QueueStatus.TRANSCRIBING.value, 37)
+    assert window.table.item(1, 3).text() == "Transcribing 37%"
+    window._sort_queue(4)
+    assert window.queue.items == [a, b, c]
+    window._sort_queue(4)
+    assert window.queue.items == [c, b, a]
+    assert not window.table.item(0, 4).flags() & Qt.ItemFlag.ItemIsEditable
+    # Multiple selection survives re-rendering with the current preview intact.
+    window.table.selectionModel().select(window.table.model().index(1, 0),
+        QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows)
+    window._move_selected(-1)
+    assert set(window._selected_ids()) == {a.id, b.id}
+    assert window._selected_item() is a
+    order = list(window.queue.items)
+    window._processing = True
+    window._update_actions()
+    assert not window.move_up_button.isEnabled()
+    assert not header.isEnabled()
+    window._sort_queue(0)
+    window._move_selected(1)
+    window._add_paths([tmp_path / "extra.amr"])
+    assert window.queue.items == order
+    window._processing = False
+    window.close()
+
+
+def test_worker_receives_displayed_order(tmp_path, monkeypatch):
+    from PySide6.QtCore import QObject, Signal
+    import time
+
+    captured = []
+    class RecordingWorker(QObject):
+        state_changed = Signal(str, str, int)
+        item_completed = Signal(str, object)
+        item_failed = Signal(str, str)
+        finished = Signal(bool)
+
+        def __init__(self, items, profile, output_mode):
+            super().__init__()
+            captured.extend(item.source.name for item in items)
+
+        def run(self):
+            self.finished.emit(False)
+
+    monkeypatch.setattr("audio_transcript.ui.BatchWorker", RecordingWorker)
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow(SettingsStore(tmp_path / "settings.json"))
+    paths = [tmp_path / name for name in ("z.amr", "a.wav", "b.ogg")]
+    for path in paths:
+        path.touch()
+    window._add_paths(paths)
+    window._sort_queue(0)
+    window.queue.items[1].status = QueueStatus.DONE
+    window._start_batch()
+    deadline = time.monotonic() + 5
+    while window._processing and time.monotonic() < deadline:
+        app.processEvents()
+        time.sleep(0.01)
+    assert not window._processing
+    assert captured == ["a.wav", "z.amr"]
     window.close()
