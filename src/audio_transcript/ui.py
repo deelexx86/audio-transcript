@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QItemSelectionModel, QThread, Qt, QUrl
+from PySide6.QtCore import QItemSelectionModel, QThread, QTimer, Qt, QUrl
 from PySide6.QtGui import QCloseEvent, QDesktopServices, QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import (
     QApplication,
@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QSplitter,
+    QSizePolicy,
     QStatusBar,
     QTableWidget,
     QTableWidgetItem,
@@ -72,7 +73,7 @@ class MainWindow(QMainWindow):
         subtitle.setObjectName("subtitle")
         title_block.addWidget(title)
         title_block.addWidget(subtitle)
-        badge = QLabel("LOCAL  •  OFFLINE")
+        badge = QLabel("LOCAL TRANSCRIPTION")
         badge.setObjectName("badge")
         badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         header.addLayout(title_block)
@@ -80,7 +81,12 @@ class MainWindow(QMainWindow):
         header.addWidget(badge)
         outer.addLayout(header)
 
-        controls = QFrame()
+        self.settings_toggle = QPushButton("Hide settings")
+        self.settings_toggle.setCheckable(True)
+        self.settings_toggle.setChecked(True)
+        self.settings_toggle.toggled.connect(self._toggle_settings)
+        header.addWidget(self.settings_toggle)
+        controls = self.settings_panel = QFrame()
         controls.setObjectName("controls")
         control_layout = QFormLayout(controls)
         control_layout.setContentsMargins(14, 12, 14, 12)
@@ -98,6 +104,19 @@ class MainWindow(QMainWindow):
         control_layout.addRow("Speaker", self.speaker_edit)
         control_layout.addRow("Output", self.output_combo)
         outer.addWidget(controls)
+
+        youtube_layout = QHBoxLayout()
+        youtube_layout.addWidget(QLabel("YouTube"))
+        self.youtube_edit = QLineEdit()
+        self.youtube_edit.setPlaceholderText("Paste a video link")
+        self.youtube_edit.setToolTip("Downloads audio when Transcribe starts; speech recognition stays local.")
+        self.add_youtube_button = QPushButton("Add Link")
+        youtube_layout.addWidget(self.youtube_edit, 1)
+        youtube_layout.addWidget(self.add_youtube_button)
+        outer.addLayout(youtube_layout)
+        youtube_hint = QLabel("YouTube needs internet. Results save to Workspace / transcripts.")
+        youtube_hint.setObjectName("subtitle")
+        outer.addWidget(youtube_hint)
 
         action_layout = QHBoxLayout()
         self.add_files_button = QPushButton("+ Files")
@@ -126,14 +145,20 @@ class MainWindow(QMainWindow):
         ordering_layout = QHBoxLayout()
         self.move_up_button = QPushButton("Move Up")
         self.move_down_button = QPushButton("Move Down")
+        self.retry_selected_button = QPushButton("Retry Selected")
+        self.retry_selected_button.setToolTip("Retry only selected Error or Cancelled items.")
+        self.remove_completed_button = QPushButton("Remove Completed")
+        self.remove_completed_button.setToolTip("Remove Done rows; keep audio and transcript files.")
         ordering_layout.addWidget(self.move_up_button)
         ordering_layout.addWidget(self.move_down_button)
-        ordering_layout.addWidget(QLabel("Click a column header to sort"))
+        ordering_layout.addWidget(self.retry_selected_button)
+        ordering_layout.addWidget(self.remove_completed_button)
         ordering_layout.addStretch()
         queue_layout.addLayout(ordering_layout)
         self.table = QTableWidget(0, 5)
-        self.table.setHorizontalHeaderLabels(("File", "Duration", "Speaker", "Status", "Added"))
+        self.table.setHorizontalHeaderLabels(("File / Video", "Duration", "Speaker", "Status", "Added"))
         self.table.horizontalHeader().setSectionsClickable(True)
+        self.table.horizontalHeader().setToolTip("Click a column header to sort; click again to reverse.")
         self.table.horizontalHeader().sectionClicked.connect(self._sort_queue)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
@@ -156,11 +181,11 @@ class MainWindow(QMainWindow):
         preview_layout.setContentsMargins(0, 0, 0, 0)
         preview_header = QHBoxLayout()
         self.preview_title = QLabel("Transcript preview")
+        self.preview_title.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.preview_title.setObjectName("sectionTitle")
         self.copy_button = QPushButton("Copy")
         self.open_folder_button = QPushButton("Open Folder")
-        preview_header.addWidget(self.preview_title)
-        preview_header.addStretch()
+        preview_header.addWidget(self.preview_title, 1)
         preview_header.addWidget(self.copy_button)
         preview_header.addWidget(self.open_folder_button)
         preview_layout.addLayout(preview_header)
@@ -234,6 +259,10 @@ class MainWindow(QMainWindow):
         self.inbox_button.clicked.connect(self._add_inbox)
         self.remove_button.clicked.connect(self._remove_selected)
         self.clear_button.clicked.connect(self._clear_queue)
+        self.add_youtube_button.clicked.connect(self._add_youtube)
+        self.youtube_edit.returnPressed.connect(self._add_youtube)
+        self.retry_selected_button.clicked.connect(self._retry_selected)
+        self.remove_completed_button.clicked.connect(self._remove_completed)
         self.move_up_button.clicked.connect(lambda: self._move_selected(-1))
         self.move_down_button.clicked.connect(lambda: self._move_selected(1))
         self.transcribe_button.clicked.connect(self._start_batch)
@@ -243,12 +272,43 @@ class MainWindow(QMainWindow):
         self.table.itemSelectionChanged.connect(self._show_selected)
         self.table.itemChanged.connect(self._table_item_changed)
 
+    def _toggle_settings(self, expanded: bool) -> None:
+        self.settings_panel.setVisible(expanded)
+        summary = f"Show settings · {self.model_combo.currentText().split(' — ')[0]} · {self.output_combo.currentText()}"
+        self.settings_toggle.setText("Hide settings" if expanded else summary)
+        self.centralWidget().layout().invalidate()
+        QTimer.singleShot(0, self._update_minimum_height)
+
+    def _update_minimum_height(self) -> None:
+        self.centralWidget().layout().activate()
+        self.layout().activate()
+        self.setMinimumHeight(max(560, self.minimumSizeHint().height()))
+
+    def _add_youtube(self) -> None:
+        if self._processing:
+            return
+        try:
+            item = self.queue.add_youtube(self.youtube_edit.text(), self.speaker_edit.text())
+        except ValueError as exc:
+            self.statusBar().showMessage(str(exc), 10000)
+            return
+        if item is None:
+            self.statusBar().showMessage("This YouTube video is already in the queue.", 6000)
+            return
+        self._reset_sort_indicator()
+        self._append_row(item)
+        self.youtube_edit.clear()
+        self.table.selectRow(self._row_by_id[item.id])
+        self.statusBar().showMessage("Video queued. Transcribe downloads audio, then transcribes locally.", 6000)
+        self._update_actions()
+
     def _restore_settings(self) -> None:
         model_index = self.model_combo.findData(self.settings.model_profile)
         self.model_combo.setCurrentIndex(max(0, model_index))
         output_index = self.output_combo.findData(self.settings.output_mode)
         self.output_combo.setCurrentIndex(max(0, output_index))
         self.speaker_edit.setText(self.settings.default_speaker)
+        self.settings_toggle.setChecked(self.settings.settings_expanded)
         self.resize(self.settings.window_width, self.settings.window_height)
         if self.settings.splitter_sizes:
             self.splitter.setSizes(self.settings.splitter_sizes)
@@ -262,6 +322,7 @@ class MainWindow(QMainWindow):
             window_width=self.width(),
             window_height=self.height(),
             splitter_sizes=self.splitter.sizes(),
+            settings_expanded=self.settings_toggle.isChecked(),
         )
         try:
             self.settings_store.save(current)
@@ -331,9 +392,9 @@ class MainWindow(QMainWindow):
     def _append_row(self, item: QueueItem) -> None:
         row = self.table.rowCount()
         self.table.insertRow(row)
-        file_cell = QTableWidgetItem(item.source.name)
+        file_cell = QTableWidgetItem(item.display_name)
         file_cell.setData(Qt.ItemDataRole.UserRole, item.id)
-        file_cell.setToolTip(str(item.source))
+        file_cell.setToolTip(item.source_url or str(item.source))
         file_cell.setFlags(file_cell.flags() & ~Qt.ItemFlag.ItemIsEditable)
         duration_cell = QTableWidgetItem(format_duration(item.duration))
         duration_cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -421,7 +482,14 @@ class MainWindow(QMainWindow):
         return ids
 
     def _remove_selected(self) -> None:
-        selected = set(self._selected_ids())
+        self._remove_ids(set(self._selected_ids()))
+
+    def _remove_completed(self) -> None:
+        self._remove_ids({item.id for item in self.queue.items if item.status == QueueStatus.DONE})
+
+    def _remove_ids(self, selected: set[str]) -> None:
+        if self._processing:
+            return
         if not selected:
             return
         self.queue.remove_ids(selected)
@@ -434,6 +502,8 @@ class MainWindow(QMainWindow):
         self._update_actions()
 
     def _clear_queue(self) -> None:
+        if self._processing:
+            return
         self._reset_sort_indicator()
         self.queue.clear()
         self.table.setRowCount(0)
@@ -455,7 +525,16 @@ class MainWindow(QMainWindow):
                 self._reset_sort_indicator()
 
     def _start_batch(self) -> None:
-        retryable = self.queue.retryable_items()
+        self._run_items(self.queue.retryable_items())
+
+    def _retry_selected(self) -> None:
+        selected = set(self._selected_ids())
+        self._run_items([
+            item for item in self.queue.items
+            if item.id in selected and item.status in {QueueStatus.ERROR, QueueStatus.CANCELLED}
+        ])
+
+    def _run_items(self, retryable: list[QueueItem]) -> None:
         if self._processing or not retryable:
             return
         profile = PROFILES_BY_KEY[str(self.model_combo.currentData())]
@@ -469,7 +548,7 @@ class MainWindow(QMainWindow):
             item.transcript = ""
             item.output_directory = None
             self._refresh_row(item)
-        work = [WorkItem(item.id, item.source, item.speaker, item.duration) for item in retryable]
+        work = [WorkItem(item.id, item.source, item.speaker, item.duration, item.source_url) for item in retryable]
         self._thread = QThread(self)
         self._worker = BatchWorker(work, profile, output_mode)
         self._worker.moveToThread(self._thread)
@@ -483,12 +562,14 @@ class MainWindow(QMainWindow):
         self._thread.finished.connect(self._thread.deleteLater)
         self._thread.finished.connect(self._on_thread_finished)
         self._batch_stopped = False
+        self._show_selected()
         self._update_actions()
         self.statusBar().showMessage(f"Using local model: {profile.display_name}")
         self._thread.start()
 
     def _stop_batch(self) -> None:
         if self._worker and self._processing:
+            self._batch_stopped = True
             self._worker.request_stop()
             self.stop_button.setEnabled(False)
             self.statusBar().showMessage(
@@ -513,6 +594,7 @@ class MainWindow(QMainWindow):
         item.status = QueueStatus.DONE
         item.progress = 100
         item.transcript = str(payload["transcript"])
+        item.title = str(payload.get("title") or "")
         item.language = str(payload["language"]) if payload["language"] else None
         item.duration = float(payload["duration"]) if payload["duration"] is not None else item.duration
         item.model_name = str(payload["model_name"])
@@ -557,6 +639,7 @@ class MainWindow(QMainWindow):
         row = self._row_by_id.get(item.id)
         if row is None:
             return
+        self.table.item(row, 0).setText(item.display_name)
         duration_cell = self.table.item(row, 1)
         speaker_cell = self.table.item(row, 2)
         status_cell = self.table.item(row, 3)
@@ -570,7 +653,7 @@ class MainWindow(QMainWindow):
         if status_cell:
             status_cell.setText(
                 f"{item.status.value} {item.progress}%"
-                if item.status == QueueStatus.TRANSCRIBING
+                if item.status in {QueueStatus.TRANSCRIBING, QueueStatus.DOWNLOADING} and item.progress >= 0
                 else item.status.value
             )
 
@@ -580,7 +663,8 @@ class MainWindow(QMainWindow):
             self.preview_title.setText("Transcript preview")
             self.preview.clear()
         else:
-            self.preview_title.setText(f"Transcript — {item.source.name}")
+            self.preview_title.setText(f"Transcript — {item.display_name}")
+            self.preview_title.setToolTip(item.display_name)
             if item.status == QueueStatus.DONE:
                 self.preview.setPlainText(item.transcript)
             elif item.status == QueueStatus.ERROR:
@@ -588,7 +672,7 @@ class MainWindow(QMainWindow):
             elif item.status == QueueStatus.CANCELLED:
                 self.preview.setPlainText("Transcription was stopped. This file can be transcribed again.")
             else:
-                self.preview.setPlainText(f"Source:\n{item.source}\n\nStatus: {item.status.value}")
+                self.preview.setPlainText(f"Source:\n{item.source_url or item.source}\n\nStatus: {item.status.value}")
         self._update_actions()
 
     def _copy_transcript(self) -> None:
@@ -614,9 +698,18 @@ class MainWindow(QMainWindow):
             self.model_combo,
             self.speaker_edit,
             self.output_combo,
+            self.youtube_edit,
+            self.add_youtube_button,
         ):
             widget.setEnabled(not self._processing)
         self.remove_button.setEnabled(not self._processing and bool(selected_ids))
+        self.retry_selected_button.setEnabled(not self._processing and any(
+            item.id in selected_ids and item.status in {QueueStatus.ERROR, QueueStatus.CANCELLED}
+            for item in self.queue.items
+        ))
+        self.remove_completed_button.setEnabled(not self._processing and any(
+            item.status == QueueStatus.DONE for item in self.queue.items
+        ))
         movable_up = any(
             item.id in selected_ids and index > 0
             and self.queue.items[index - 1].id not in selected_ids
@@ -632,7 +725,7 @@ class MainWindow(QMainWindow):
         self.table.horizontalHeader().setEnabled(not self._processing)
         self.clear_button.setEnabled(not self._processing and has_items)
         self.transcribe_button.setEnabled(not self._processing and retryable)
-        self.stop_button.setEnabled(self._processing and bool(self._worker))
+        self.stop_button.setEnabled(self._processing and bool(self._worker) and not self._batch_stopped)
         completed_selected = bool(selected and selected.status == QueueStatus.DONE)
         self.copy_button.setEnabled(completed_selected)
         self.open_folder_button.setEnabled(
@@ -651,6 +744,7 @@ class MainWindow(QMainWindow):
             parts.append(f"{counts[QueueStatus.CANCELLED]} cancelled")
         self.summary_label.setText(" • ".join(parts) if has_items else "Queue is empty")
         active = next((item for item in self.queue.items if item.status in ACTIVE_STATUSES), None)
+        self.progress_bar.setRange(0, 0 if active and active.progress < 0 else 100)
         self.progress_bar.setValue(active.progress if active else (100 if has_items and not retryable else 0))
 
     def closeEvent(self, event: QCloseEvent) -> None:

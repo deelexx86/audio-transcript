@@ -163,3 +163,77 @@ def test_worker_receives_displayed_order(tmp_path, monkeypatch):
     assert not window._processing
     assert captured == ["a.wav", "z.amr"]
     window.close()
+
+
+
+def test_collapsible_settings_and_youtube_queue(monkeypatch, tmp_path):
+    from PySide6.QtCore import Qt
+    app = QApplication.instance() or QApplication([])
+    store = SettingsStore(tmp_path / "settings.json")
+    window = MainWindow(store)
+    window.show()
+    app.processEvents()
+    expanded_height = window.minimumHeight()
+    window.settings_toggle.click()
+    app.processEvents()
+    assert not window.settings_panel.isVisible()
+    assert window.minimumHeight() < expanded_height
+    window.resize(800, 600)
+    app.processEvents()
+    assert window.splitter.height() >= sum(window.splitter.widget(i).minimumHeight() for i in range(2))
+    window.youtube_edit.setText("https://youtu.be/jNQXAC9IVRw")
+    window.add_youtube_button.click()
+    assert window.table.rowCount() == 1
+    assert window.queue.items[0].source_url == "https://www.youtube.com/watch?v=jNQXAC9IVRw"
+    assert "YouTube" in window.table.item(0, 0).text()
+    assert "https://" in window.preview.toPlainText()
+    window.youtube_edit.setText("https://youtube.com/watch?v=jNQXAC9IVRw&t=5")
+    window.add_youtube_button.click()
+    assert window.table.rowCount() == 1
+    window.youtube_edit.setText("https://example.com")
+    window.add_youtube_button.click()
+    assert "video link" in window.statusBar().currentMessage()
+    window.close()
+    assert store.load().settings_expanded is False
+    reopened = MainWindow(store)
+    reopened.show()
+    app.processEvents()
+    assert not reopened.settings_panel.isVisible()
+    reopened.close()
+
+
+def test_retry_selected_and_remove_completed_preserve_other_items(monkeypatch, tmp_path):
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow(SettingsStore(tmp_path / "settings.json"))
+    paths = [tmp_path / f"{i}.wav" for i in range(4)]
+    for path in paths:
+        path.write_bytes(b"source untouched")
+    window._add_paths(paths)
+    done, error, cancelled, queued = window.queue.items
+    done.status, error.status, cancelled.status = QueueStatus.DONE, QueueStatus.ERROR, QueueStatus.CANCELLED
+    output = tmp_path / "transcript.txt"
+    output.write_text("completed transcript", encoding="utf-8")
+    done.output_directory = tmp_path
+    window.table.selectRow(1)
+    window._update_actions()
+    assert window.retry_selected_button.isEnabled()
+    batches = []
+    monkeypatch.setattr(window, "_run_items", lambda items: batches.append(list(items)))
+    window.retry_selected_button.click()
+    assert batches == [[error]]
+    assert cancelled.status == QueueStatus.CANCELLED and queued.status == QueueStatus.QUEUED
+    window._processing = True
+    window._update_actions()
+    assert not window.remove_completed_button.isEnabled()
+    window._remove_completed()
+    assert done in window.queue.items
+    window._processing = False
+    window._update_actions()
+    window.remove_completed_button.click()
+    assert window.queue.items == [error, cancelled, queued]
+    assert window._selected_item() is error
+    assert window.table.rowCount() == 3
+    assert output.read_text(encoding="utf-8") == "completed transcript"
+    assert all(path.read_bytes() == b"source untouched" for path in paths)
+    assert window.queue.add_paths([paths[0]]).added
+    window.close()

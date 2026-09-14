@@ -17,6 +17,7 @@ class AppSettings:
     window_width: int = 1040
     window_height: int = 760
     splitter_sizes: list[int] | None = None
+    settings_expanded: bool = True
 
 
 class SettingsStore:
@@ -39,6 +40,8 @@ class SettingsStore:
             settings.window_height = max(560, int(settings.window_height))
             if not isinstance(settings.splitter_sizes, list):
                 settings.splitter_sizes = None
+            if not isinstance(settings.settings_expanded, bool):
+                settings.settings_expanded = True
             return settings
         except (OSError, ValueError, TypeError, json.JSONDecodeError):
             return AppSettings()

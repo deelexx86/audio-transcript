@@ -12,6 +12,7 @@ dependencies = [
     "PySide6>=6.8,<7",
     "av>=13,<17",
     "faster-whisper>=1.1,<2",
+    "yt-dlp[default]>=2026.8.19",
 ]
 
 [project.optional-dependencies]
