@@ -56,6 +56,10 @@ Sorting is a one-time queue action. Newly added files append at the end, and man
 
 **Add Link** validates and queues one video without contacting YouTube. **Transcribe** downloads the audio, then uses the selected local Whisper model. YouTube videos and local files share the same sequential queue. Download progress is shown separately from transcription progress; Stop requests cancellation at the next safe download/inference boundary (an in-flight network request may take up to its timeout).
 
+If YouTube requests an anti-bot check, the row shows **Waiting to retry** for 10 seconds, then the app tries once with a fresh downloader guest session. **Stop** also cancels this wait. If the second attempt fails, the row remains available for **Retry Selected** later; subsequent queue items continue normally. Other error categories do not trigger this extra retry (the downloader still has its bounded connection/fragment retries).
+
+The error preview distinguishes anti-bot checks, access restrictions, unavailable videos, connection/server errors, rejected media requests, missing components, and missing audio formats. It includes the failing stage, attempt count, downloader/runtime versions, and at most five fixed warning summaries. Raw downloader logs, cookies, request headers, and media URLs are not retained in these diagnostics; no diagnostic log is written to disk.
+
 Supported links include `youtube.com/watch?v=...`, `youtu.be/...`, Shorts, and embedded-video URLs. Tracking, timestamps, and playlist parameters are stripped: a link always transcribes the entire single video. Playlist-only/channel URLs, current live streams, and upcoming streams are not supported. Videos must be accessible without signing in; the app does not import browser cookies or use accounts.
 
 Audio is downloaded with `yt-dlp` into an app-created temporary `config/youtube-*` directory. It is removed after completion, failure, or cancellation. A forced process termination or power loss may leave this temporary directory behind. Local source files are never removed. No permanent video or audio archive is created.
@@ -117,5 +121,6 @@ Remove the `QT_QPA_PLATFORM` environment variable before launching the normal vi
 - **`run.bat` says setup is missing:** create `.venv` and install the project using the Initial setup commands.
 - **No files appear from Add Folder or Inbox:** scanning is intentionally non-recursive and includes only supported audio files directly in the selected folder.
 - **Output folder has `_2` or a higher suffix:** an earlier artifact folder already exists; the app never silently overwrites it.
-- **YouTube download failed:** check internet access and video availability without signing in. If multiple public videos fail, update `yt-dlp[default]` using the command above. Authentication, age/region restrictions, and YouTube service changes can prevent a download; a failed row does not stop the rest of the queue.
+- **YouTube requested an anti-bot check:** public browser playback can still work while an automated request is rejected. The app retries once after 10 seconds. If rejected again, try **Retry Selected** later. Login or a downloader update is not a guaranteed fix; the app does not automatically access browser sessions, cookies, or accounts.
+- **Other YouTube download failures:** use the error category and diagnostic summary to distinguish connectivity, access, format, and component problems. Check for a newer `yt-dlp[default]` release when service compatibility changes; a failed row does not stop the rest of the queue.
 - **YouTube needs a JavaScript runtime:** make Node.js 22+ or Deno 2.3+ available on PATH, then restart the app. Local-file transcription does not need this runtime.

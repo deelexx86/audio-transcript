@@ -15,7 +15,7 @@ from audio_transcript.paths import CONFIG_DIR
 from audio_transcript.profiles import ModelProfile, require_local_model
 from audio_transcript.queueing import QueueStatus
 from audio_transcript.transcription import LocalTranscriber, TranscriptionCancelled
-from audio_transcript.youtube import download_audio
+from audio_transcript.youtube import YouTubeDownloadError, download_audio
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +74,9 @@ class BatchWorker(QObject):
                                 item_id, QueueStatus.DOWNLOADING.value, progress
                             ),
                             should_stop=self._stop_requested.is_set,
+                            on_retry=lambda item_id=work.id: self.state_changed.emit(
+                                item_id, QueueStatus.RETRYING.value, -1
+                            ),
                         )
                         source, title = audio.path, audio.title
                         self.state_changed.emit(work.id, QueueStatus.PREPARING.value, 0)
@@ -123,8 +126,9 @@ class BatchWorker(QObject):
                 stopped = True
                 break
             except Exception as exc:
+                heading = "YouTube download failed" if isinstance(exc, YouTubeDownloadError) else "Transcription failed"
                 message = (
-                    "Transcription failed\n\n"
+                    f"{heading}\n\n"
                     f"Source:\n{work.source_url or work.source}\n\n"
                     f"Details:\n{exc}"
                 )

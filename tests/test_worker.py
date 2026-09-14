@@ -130,6 +130,7 @@ def test_youtube_download_failure_cleans_partial_and_continues(monkeypatch, tmp_
 
     def cancel_download(url, directory, **kwargs):
         (directory / "audio.part").touch()
+        kwargs["on_retry"]()
         worker.request_stop()
         raise TranscriptionCancelled("stopped")
 
@@ -140,6 +141,7 @@ def test_youtube_download_failure_cleans_partial_and_continues(monkeypatch, tmp_
     worker.finished.connect(finished.append)
     worker.run()
     assert ("video", "Cancelled") in states
+    assert ("video", "Waiting to retry") in states
     assert not any(item_id == "local" for item_id, _ in states)
     assert finished == [True]
     assert list(config.iterdir()) == []
