@@ -53,7 +53,7 @@ def test_batch_worker_isolates_file_error_and_continues(monkeypatch, tmp_path: P
     worker.run()
 
     assert failures[0][0] == "bad"
-    assert "decode failed" in failures[0][1]
+    assert "decode failed" in failures[0][1].details
     assert completions == ["good"]
     assert finished == [False]
 
@@ -164,4 +164,4 @@ def test_missing_model_prevents_youtube_download(monkeypatch, tmp_path):
     errors = []
     worker.item_failed.connect(lambda _, message: errors.append(message))
     worker.run()
-    assert len(errors) == 1 and "Model is not installed" in errors[0]
+    assert len(errors) == 1 and "Model is not installed" in errors[0].details

@@ -1,5 +1,7 @@
 # Audio Transcript
 
+[English](README.md) · [Русский](README-ru.md) · [Español](README-es.md) · [Deutsch](README-de.md)
+
 Audio Transcript is a focused Windows 11 desktop utility for turning Telegram voice messages, common audio files, and the audio from local video files into faithful text. It provides a sequential queue, transcript preview, clipboard copy, and both TXT and Markdown artifacts.
 
 Transcription runs locally with `faster-whisper` and CTranslate2. After dependencies and models have been downloaded during setup, local-file transcription works offline: audio and transcripts stay on this computer, and the app uses no transcription API, account, telemetry, cloud storage, backend, or local server.
@@ -37,6 +39,8 @@ The bootstrap is repeatable and skips complete models. Model files are intention
 Double-click `run.bat`. It starts the desktop application with `.venv\Scripts\pythonw.exe`, so normal use does not require a terminal.
 
 ## Workflow
+
+Choose **Interface language** above the settings panel: English, Русский, Español, or Deutsch. The selector stays visible when settings are collapsed and works during processing. Changes apply immediately and are saved in `config/settings.json`. On first launch, the app uses a supported Windows display language, falling back to English. This setting changes only the interface: speech language is detected automatically, and transcript text, filenames, and Markdown metadata are preserved. Technical diagnostic details retain their original wording.
 
 1. Expand **Show settings** if needed. Choose **Accuracy** for maximum fidelity or **Fast** for lower CPU processing time.
 2. Optionally enter a default speaker. Each queued file's speaker remains editable.
@@ -116,6 +120,22 @@ $env:QT_QPA_PLATFORM = "offscreen"
 ```
 
 Remove the `QT_QPA_PLATFORM` environment variable before launching the normal visible application if it remains set in the current terminal.
+
+## Maintaining translations
+
+The app uses Qt's native `QTranslator` and Qt Linguist catalogs in `src/audio_transcript/translations/`. Editable `.ts` files and compiled `.qm` files are included in the Python package; no runtime download or translation service is used. The English catalog also supplies proper plural forms. Qt's bundled translations are loaded for standard Qt dialogs; native Windows dialogs follow Windows language settings.
+
+Wrap new interface text in `self.tr("English source text")` in `MainWindow`. Use complete templates with named placeholders; use `self.tr("%n item(s)", None, count)` for counts. `_status("English source text", ...)` is also extracted. Keep internal settings/profile/status identifiers and generated artifacts independent of translated labels.
+
+```powershell
+# Extract new/changed strings; existing translations are retained.
+.\.venv\Scripts\python.exe scripts\update_translations.py --update
+# Edit all four .ts catalogs with Qt Linguist or an XML editor, then compile:
+.\.venv\Scripts\python.exe scripts\update_translations.py
+.\.venv\Scripts\python.exe -m pytest
+```
+
+Commit the updated `.ts` and `.qm` files together. Translation tests check coverage, placeholders, plural forms, compiled catalog consistency, and live language changes. Keep the four README versions aligned when the workflow changes.
 
 ## Troubleshooting
 

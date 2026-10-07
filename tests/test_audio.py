@@ -175,6 +175,6 @@ def test_silent_video_fails_before_model_loading_and_batch_continues(monkeypatch
     worker.finished.connect(finished.append)
     worker.run()
     assert [item_id for item_id, _ in failures] == ["silent", "corrupt"]
-    assert "no audio stream" in failures[0][1]
+    assert "no audio stream" in failures[0][1].details
     assert finished == [False]
     assert source.exists() and corrupt.read_bytes() == b"invalid video"

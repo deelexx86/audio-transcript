@@ -11,8 +11,9 @@ from PySide6.QtCore import QObject, Signal, Slot
 
 from audio_transcript.artifacts import write_artifacts
 from audio_transcript.audio import probe_duration
+from audio_transcript.errors import ProcessingFailure
 from audio_transcript.paths import CONFIG_DIR
-from audio_transcript.profiles import ModelProfile, require_local_model
+from audio_transcript.profiles import ModelMissingError, ModelProfile, require_local_model
 from audio_transcript.queueing import QueueStatus
 from audio_transcript.transcription import LocalTranscriber, TranscriptionCancelled
 from audio_transcript.youtube import YouTubeDownloadError, download_audio
@@ -30,7 +31,7 @@ class WorkItem:
 class BatchWorker(QObject):
     state_changed = Signal(str, str, int)
     item_completed = Signal(str, object)
-    item_failed = Signal(str, str)
+    item_failed = Signal(str, object)
     finished = Signal(bool)
 
     def __init__(
@@ -126,11 +127,12 @@ class BatchWorker(QObject):
                 stopped = True
                 break
             except Exception as exc:
-                heading = "YouTube download failed" if isinstance(exc, YouTubeDownloadError) else "Transcription failed"
-                message = (
-                    f"{heading}\n\n"
-                    f"Source:\n{work.source_url or work.source}\n\n"
-                    f"Details:\n{exc}"
+                message = ProcessingFailure(
+                    source=str(work.source_url or work.source),
+                    details=str(exc),
+                    kind=exc.kind if isinstance(exc, YouTubeDownloadError)
+                    else "model_missing" if isinstance(exc, ModelMissingError)
+                    else "transcription",
                 )
                 self.item_failed.emit(work.id, message)
                 if self._stop_requested.is_set():

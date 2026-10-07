@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Iterable
 
 from audio_transcript.audio import is_supported_media
+from audio_transcript.errors import ProcessingFailure
 
 
 class QueueStatus(StrEnum):
@@ -35,7 +36,7 @@ class QueueItem:
     status: QueueStatus = QueueStatus.QUEUED
     progress: int = 0
     transcript: str = ""
-    error: str = ""
+    error: str | ProcessingFailure = ""
     output_directory: Path | None = None
     language: str | None = None
     model_name: str | None = None

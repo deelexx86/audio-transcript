@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import pytest
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication
@@ -10,6 +12,12 @@ from PySide6.QtWidgets import QApplication
 from audio_transcript.settings import SettingsStore
 from audio_transcript.queueing import QueueStatus
 from audio_transcript.ui import MainWindow
+
+
+@pytest.fixture(autouse=True)
+def english_system_language(monkeypatch):
+    # Tests of English labels must be independent of the Windows display language.
+    monkeypatch.setattr("audio_transcript.i18n.system_language", lambda: "en")
 
 
 def test_video_file_picker_folder_inbox_and_drop(monkeypatch, tmp_path):

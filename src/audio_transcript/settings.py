@@ -18,6 +18,7 @@ class AppSettings:
     window_height: int = 760
     splitter_sizes: list[int] | None = None
     settings_expanded: bool = True
+    interface_language: str = ""
 
 
 class SettingsStore:
@@ -42,6 +43,8 @@ class SettingsStore:
                 settings.splitter_sizes = None
             if not isinstance(settings.settings_expanded, bool):
                 settings.settings_expanded = True
+            if settings.interface_language not in ("", "en", "ru", "es", "de"):
+                settings.interface_language = ""
             return settings
         except (OSError, ValueError, TypeError, json.JSONDecodeError):
             return AppSettings()
