@@ -1,14 +1,17 @@
 # Audio Transcript
 
-Audio Transcript is a focused Windows 11 desktop utility for turning Telegram voice messages and other common audio files into faithful text. It provides a sequential queue, transcript preview, clipboard copy, and both TXT and Markdown artifacts.
+[English](README.md) · [Русский](README-ru.md) · [Español](README-es.md) · [Deutsch](README-de.md)
 
-Transcription runs locally with `faster-whisper` and CTranslate2. After dependencies and models have been downloaded during setup, normal transcription works offline: audio and transcripts stay on this computer, and the app uses no transcription API, account, telemetry, cloud storage, backend, or local server.
+Audio Transcript is a focused Windows 11 desktop utility for turning Telegram voice messages, common audio files, and the audio from local video files into faithful text. It provides a sequential queue, transcript preview, clipboard copy, and both TXT and Markdown artifacts.
+
+Transcription runs locally with `faster-whisper` and CTranslate2. After dependencies and models have been downloaded during setup, local-file transcription works offline: audio and transcripts stay on this computer, and the app uses no transcription API, account, telemetry, cloud storage, backend, or local server.
 
 ## Requirements
 
 - Windows 11
 - 64-bit Python 3.11 or 3.12
-- Internet access for initial dependency and model download only
+- Internet access for setup and for downloading audio from YouTube; local-file transcription remains offline
+- For YouTube: Node.js 22+ or Deno 2.3+ available on PATH
 - Substantial free disk space for both Whisper models
 
 The application is CPU-first and uses CTranslate2 `int8`; a discrete GPU is not required.
@@ -37,18 +40,57 @@ Double-click `run.bat`. It starts the desktop application with `.venv\Scripts\py
 
 ## Workflow
 
-1. Choose **Accuracy** for maximum fidelity or **Fast** for lower CPU processing time.
+Choose **Interface language** above the settings panel: English, Русский, Español, or Deutsch. The selector stays visible when settings are collapsed and works during processing. Changes apply immediately and are saved in `config/settings.json`. On first launch, the app uses a supported Windows display language, falling back to English. This setting changes only the interface: speech language is detected automatically, and transcript text, filenames, and Markdown metadata are preserved. Technical diagnostic details retain their original wording.
+
+1. Expand **Show settings** if needed. Choose **Accuracy** for maximum fidelity or **Fast** for lower CPU processing time.
 2. Optionally enter a default speaker. Each queued file's speaker remains editable.
 3. Choose **Workspace / transcripts** or **Same folder as source**.
-4. Drop files into the window, use **+ Files**, use non-recursive **+ Folder**, or scan `inbox\`.
-5. Select **Transcribe**. Files run sequentially while the window remains responsive.
-6. Select a completed row to preview, **Copy** its clean text, or **Open Folder** for its artifacts.
+4. Drop files into the window, use **+ Files**, use non-recursive **+ Folder**, or scan `inbox\`. Alternatively, paste a YouTube video link into the **YouTube** field and select **Add Link** (or press Enter).
+5. Arrange the queue with **Move Up / Move Down** (multiple rows may be selected), or click any column header to sort ascending; click again for descending. **Added** records the local date/time of addition to this session, not the file modification time.
+6. Select **Transcribe**. Files run sequentially in the displayed order while the window remains responsive. Reordering is disabled during processing.
+7. Select a completed row to preview, **Copy** its clean text, or **Open Folder** for its artifacts.
 
-**Stop** requests safe cancellation of the current batch. Completed outputs are preserved, no further queued file starts, and remaining queued items can be restarted. Remove and Clear affect only the UI queue; source audio and generated artifacts are never deleted.
+**Stop** requests safe cancellation of the current batch. Completed outputs are preserved, no further queued file starts, and remaining queued items can be restarted. **Retry Selected** processes only selected Error or Cancelled rows, in queue order; unrelated rows stay unchanged. **Remove Completed** removes Done rows. Remove, Remove Completed, and Clear affect only the UI queue; local source audio and generated artifacts are never deleted.
+
+**Hide settings** collapses the model, speaker, and output controls to give the queue and preview more room. The selected model and output remain visible in the Show settings button; the expanded/collapsed preference is saved locally.
+
+Sorting is a one-time queue action. Newly added files append at the end, and manual moves override the previous sort. Unknown durations sort before known durations in ascending order. The queue and addition timestamps are session-only and are not restored after restarting.
+
+## YouTube videos
+
+**Add Link** validates and queues one video without contacting YouTube. **Transcribe** downloads the audio, then uses the selected local Whisper model. YouTube videos and local files share the same sequential queue. Download progress is shown separately from transcription progress; Stop requests cancellation at the next safe download/inference boundary (an in-flight network request may take up to its timeout).
+
+If YouTube requests an anti-bot check, the row shows **Waiting to retry** for 10 seconds, then the app tries once with a fresh downloader guest session. **Stop** also cancels this wait. If the second attempt fails, the row remains available for **Retry Selected** later; subsequent queue items continue normally. Other error categories do not trigger this extra retry (the downloader still has its bounded connection/fragment retries).
+
+The error preview distinguishes anti-bot checks, access restrictions, unavailable videos, connection/server errors, rejected media requests, missing components, and missing audio formats. It includes the failing stage, attempt count, downloader/runtime versions, and at most five fixed warning summaries. Raw downloader logs, cookies, request headers, and media URLs are not retained in these diagnostics; no diagnostic log is written to disk.
+
+Supported links include `youtube.com/watch?v=...`, `youtu.be/...`, Shorts, and embedded-video URLs. Tracking, timestamps, and playlist parameters are stripped: a link always transcribes the entire single video. Playlist-only/channel URLs, current live streams, and upcoming streams are not supported. Videos must be accessible without signing in; the app does not import browser cookies or use accounts.
+
+Audio is downloaded with `yt-dlp` into an app-created temporary `config/youtube-*` directory. It is removed after completion, failure, or cancellation. A forced process termination or power loss may leave this temporary directory behind. Local source files are never removed. No permanent video or audio archive is created.
+
+YouTube outputs always use `transcripts/YYYY/YYYY-MM-DD/youtube-VIDEO_ID/`, even when **Same folder as source** is selected for local files. Existing outputs receive a numbered suffix. Markdown includes the source video URL and title; TXT remains only the local model's transcript. Video titles appear in completed queue rows. Retrying a YouTube item downloads the audio again.
+
+The Python dependency `yt-dlp[default]` includes its matching JavaScript solver scripts. A supported Node.js or Deno runtime is required; see the [official yt-dlp runtime guide](https://github.com/yt-dlp/yt-dlp/wiki/EJS) for setup. No standalone FFmpeg installation is needed: audio-only downloads are decoded with the existing PyAV dependency. Neither downloader components nor speech models are silently installed at runtime.
+
+To update an existing environment after pulling these changes:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+```
+
+YouTube changes can require a downloader update independently of the app:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install --upgrade "yt-dlp[default]"
+```
 
 ## Inputs and local folders
 
-Supported input formats are `.ogg` (including Telegram Ogg/Opus), `.mp3`, `.m4a`, `.wav`, and `.webm`. Source files may remain anywhere on the local filesystem and are never copied, moved, renamed, or deleted by the app.
+Supported audio formats are `.ogg` (including Telegram Ogg/Opus), `.mp3`, `.m4a`, `.wav`, `.webm`, and `.amr` (AMR-NB / AMR-WB).
+
+Supported video containers are `.mp4`, `.m4v`, `.mkv`, `.mov`, `.avi`, `.wmv`, `.asf`, `.flv`, `.webm`, `.mpg`, `.mpeg`, `.ts`, `.mts`, `.m2ts`, `.vob`, `.ogv`, `.3gp`, and `.3g2`. Add local videos through **+ Files**, **+ Folder**, **Inbox**, or drag & drop, then select **Transcribe** as usual. The first audio track is decoded directly by the existing PyAV dependency and transcribed locally; no separate audio export or standalone FFmpeg installation is needed. Video images and subtitles are not processed. Actual compatibility depends on a readable, unencrypted audio track supported by the decoder. Videos with no audio or unreadable audio produce a per-file error; the remaining batch continues.
+
+Source files may remain anywhere on the local filesystem and are never copied, moved, renamed, or deleted by the app. Video transcripts use the same output modes, collision handling, TXT/Markdown artifacts, preview, and clipboard actions as audio transcripts.
 
 - `inbox\` is an optional staging folder for saved voice messages. The Inbox action scans only that folder, not subfolders.
 - `models\` contains the two local speech-to-text models.
@@ -67,7 +109,7 @@ Same-folder mode creates `source-name_transcript\` beside the audio. Existing fo
 
 ## Privacy
 
-During normal use, PyAV decodes local audio and the selected repository-local Whisper model performs inference on the CPU. The app makes no intentional network requests, performs no semantic rewriting or summarization, and does not permanently duplicate source audio. Treat `inbox\`, `transcripts\`, `models\`, `.venv\`, and `config\settings.json` as private runtime state; repository ignore rules protect them from accidental commits.
+During normal use, PyAV decodes local audio and the selected repository-local Whisper model performs inference on the CPU. Local-file processing makes no intentional network requests. YouTube downloads contact YouTube and its media delivery hosts; speech recognition still runs locally, and transcripts are not uploaded. The app performs no semantic rewriting or summarization and does not permanently duplicate source audio. This explicitly requested YouTube workflow extends the original BRIEF.md offline-input boundary; BRIEF.md itself is unchanged. Treat `inbox\`, `transcripts\`, `models\`, `.venv\`, and `config\settings.json` as private runtime state; repository ignore rules protect them from accidental commits.
 
 ## Tests and installation check
 
@@ -79,11 +121,31 @@ $env:QT_QPA_PLATFORM = "offscreen"
 
 Remove the `QT_QPA_PLATFORM` environment variable before launching the normal visible application if it remains set in the current terminal.
 
+## Maintaining translations
+
+The app uses Qt's native `QTranslator` and Qt Linguist catalogs in `src/audio_transcript/translations/`. Editable `.ts` files and compiled `.qm` files are included in the Python package; no runtime download or translation service is used. The English catalog also supplies proper plural forms. Qt's bundled translations are loaded for standard Qt dialogs; native Windows dialogs follow Windows language settings.
+
+Wrap new interface text in `self.tr("English source text")` in `MainWindow`. Use complete templates with named placeholders; use `self.tr("%n item(s)", None, count)` for counts. `_status("English source text", ...)` is also extracted. Keep internal settings/profile/status identifiers and generated artifacts independent of translated labels.
+
+```powershell
+# Extract new/changed strings; existing translations are retained.
+.\.venv\Scripts\python.exe scripts\update_translations.py --update
+# Edit all four .ts catalogs with Qt Linguist or an XML editor, then compile:
+.\.venv\Scripts\python.exe scripts\update_translations.py
+.\.venv\Scripts\python.exe -m pytest
+```
+
+Commit the updated `.ts` and `.qm` files together. Translation tests check coverage, placeholders, plural forms, compiled catalog consistency, and live language changes. Keep the four README versions aligned when the workflow changes.
+
 ## Troubleshooting
 
 - **Model is not installed:** run `bootstrap_models.bat` while online. Both model folders must contain `config.json`, `model.bin`, and `tokenizer.json`.
 - **Audio cannot be decoded:** confirm the file is complete and uses a supported extension. A corrupt or unsupported stream is reported on that queue row; later files continue.
 - **CPU transcription is slow:** use the Fast profile. Large Whisper models are compute- and memory-intensive, especially for long recordings.
 - **`run.bat` says setup is missing:** create `.venv` and install the project using the Initial setup commands.
-- **No files appear from Add Folder or Inbox:** scanning is intentionally non-recursive and includes only supported audio files directly in the selected folder.
+- **Video contains no audio:** the app requires an audio track; silent videos cannot be transcribed. For multi-track videos, the first audio track is used.
+- **No files appear from Add Folder or Inbox:** scanning is intentionally non-recursive and includes only supported audio and video files directly in the selected folder.
 - **Output folder has `_2` or a higher suffix:** an earlier artifact folder already exists; the app never silently overwrites it.
+- **YouTube requested an anti-bot check:** public browser playback can still work while an automated request is rejected. The app retries once after 10 seconds. If rejected again, try **Retry Selected** later. Login or a downloader update is not a guaranteed fix; the app does not automatically access browser sessions, cookies, or accounts.
+- **Other YouTube download failures:** use the error category and diagnostic summary to distinguish connectivity, access, format, and component problems. Check for a newer `yt-dlp[default]` release when service compatibility changes; a failed row does not stop the rest of the queue.
+- **YouTube needs a JavaScript runtime:** make Node.js 22+ or Deno 2.3+ available on PATH, then restart the app. Local-file transcription does not need this runtime.

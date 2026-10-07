@@ -64,17 +64,22 @@ def render_markdown(
     speaker: str,
     model_name: str,
     transcript: str,
+    source_url: str | None = None,
+    source_title: str = "",
 ) -> str:
     clean_speaker = " ".join(speaker.split())
     lines = [
         "# Transcript",
         "",
-        f"Source: {Path(source_name).name}",
+        f"Source: {'YouTube' if source_url else Path(source_name).name}",
         f"Processed: {processed_at.strftime('%Y-%m-%d %H:%M')}",
         f"Duration: {format_duration(duration)}",
     ]
     if language:
         lines.append(f"Language: {' '.join(language.split())}")
+    if source_url:
+        lines.append(f"URL: {source_url}")
+        lines.append(f"Title: {' '.join(source_title.split())}")
     if clean_speaker:
         lines.append(f"Speaker: {clean_speaker}")
     lines.extend(
@@ -101,6 +106,8 @@ def write_artifacts(
     model_name: str,
     output_mode: str,
     workspace: str | Path = TRANSCRIPTS_DIR,
+    source_url: str | None = None,
+    source_title: str = "",
 ) -> ArtifactResult:
     clean_transcript = transcript.strip()
     parent, base_name = output_parent(source, output_mode, processed_at, workspace)
@@ -120,6 +127,8 @@ def write_artifacts(
                 speaker=speaker,
                 model_name=model_name,
                 transcript=clean_transcript,
+                source_url=source_url,
+                source_title=source_title,
             ),
             encoding="utf-8",
         )

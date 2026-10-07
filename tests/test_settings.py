@@ -17,6 +17,7 @@ def test_settings_round_trip_with_cyrillic(tmp_path: Path) -> None:
         window_width=1200,
         window_height=800,
         splitter_sizes=[420, 260],
+        settings_expanded=False,
     )
 
     store.save(expected)
@@ -35,7 +36,8 @@ def test_invalid_settings_fall_back_safely(tmp_path: Path) -> None:
 
 def test_unknown_values_are_normalized(tmp_path: Path) -> None:
     path = tmp_path / "settings.json"
-    path.write_text(json.dumps({"model_profile": "other", "output_mode": "cloud"}))
+    path.write_text(json.dumps({"model_profile": "other", "output_mode": "cloud", "settings_expanded": "bad"}))
     loaded = SettingsStore(path).load()
     assert loaded.model_profile == "accuracy"
     assert loaded.output_mode == "workspace"
+    assert loaded.settings_expanded is True
