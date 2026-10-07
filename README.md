@@ -1,6 +1,6 @@
 # Audio Transcript
 
-Audio Transcript is a focused Windows 11 desktop utility for turning Telegram voice messages and other common audio files into faithful text. It provides a sequential queue, transcript preview, clipboard copy, and both TXT and Markdown artifacts.
+Audio Transcript is a focused Windows 11 desktop utility for turning Telegram voice messages, common audio files, and the audio from local video files into faithful text. It provides a sequential queue, transcript preview, clipboard copy, and both TXT and Markdown artifacts.
 
 Transcription runs locally with `faster-whisper` and CTranslate2. After dependencies and models have been downloaded during setup, local-file transcription works offline: audio and transcripts stay on this computer, and the app uses no transcription API, account, telemetry, cloud storage, backend, or local server.
 
@@ -82,7 +82,11 @@ YouTube changes can require a downloader update independently of the app:
 
 ## Inputs and local folders
 
-Supported input formats are `.ogg` (including Telegram Ogg/Opus), `.mp3`, `.m4a`, `.wav`, `.webm`, and `.amr` (AMR-NB / AMR-WB, decoded locally by the existing PyAV dependency). Source files may remain anywhere on the local filesystem and are never copied, moved, renamed, or deleted by the app.
+Supported audio formats are `.ogg` (including Telegram Ogg/Opus), `.mp3`, `.m4a`, `.wav`, `.webm`, and `.amr` (AMR-NB / AMR-WB).
+
+Supported video containers are `.mp4`, `.m4v`, `.mkv`, `.mov`, `.avi`, `.wmv`, `.asf`, `.flv`, `.webm`, `.mpg`, `.mpeg`, `.ts`, `.mts`, `.m2ts`, `.vob`, `.ogv`, `.3gp`, and `.3g2`. Add local videos through **+ Files**, **+ Folder**, **Inbox**, or drag & drop, then select **Transcribe** as usual. The first audio track is decoded directly by the existing PyAV dependency and transcribed locally; no separate audio export or standalone FFmpeg installation is needed. Video images and subtitles are not processed. Actual compatibility depends on a readable, unencrypted audio track supported by the decoder. Videos with no audio or unreadable audio produce a per-file error; the remaining batch continues.
+
+Source files may remain anywhere on the local filesystem and are never copied, moved, renamed, or deleted by the app. Video transcripts use the same output modes, collision handling, TXT/Markdown artifacts, preview, and clipboard actions as audio transcripts.
 
 - `inbox\` is an optional staging folder for saved voice messages. The Inbox action scans only that folder, not subfolders.
 - `models\` contains the two local speech-to-text models.
@@ -119,7 +123,8 @@ Remove the `QT_QPA_PLATFORM` environment variable before launching the normal vi
 - **Audio cannot be decoded:** confirm the file is complete and uses a supported extension. A corrupt or unsupported stream is reported on that queue row; later files continue.
 - **CPU transcription is slow:** use the Fast profile. Large Whisper models are compute- and memory-intensive, especially for long recordings.
 - **`run.bat` says setup is missing:** create `.venv` and install the project using the Initial setup commands.
-- **No files appear from Add Folder or Inbox:** scanning is intentionally non-recursive and includes only supported audio files directly in the selected folder.
+- **Video contains no audio:** the app requires an audio track; silent videos cannot be transcribed. For multi-track videos, the first audio track is used.
+- **No files appear from Add Folder or Inbox:** scanning is intentionally non-recursive and includes only supported audio and video files directly in the selected folder.
 - **Output folder has `_2` or a higher suffix:** an earlier artifact folder already exists; the app never silently overwrites it.
 - **YouTube requested an anti-bot check:** public browser playback can still work while an automated request is rejected. The app retries once after 10 seconds. If rejected again, try **Retry Selected** later. Login or a downloader update is not a guaranteed fix; the app does not automatically access browser sessions, cookies, or accounts.
 - **Other YouTube download failures:** use the error category and diagnostic summary to distinguish connectivity, access, format, and component problems. Check for a newer `yt-dlp[default]` release when service compatibility changes; a failed row does not stop the rest of the queue.

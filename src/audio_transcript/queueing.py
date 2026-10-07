@@ -8,7 +8,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Iterable
 
-from audio_transcript.audio import is_supported_audio
+from audio_transcript.audio import is_supported_media
 
 
 class QueueStatus(StrEnum):
@@ -91,7 +91,7 @@ class QueueManager:
             if not path.is_file():
                 missing += 1
                 continue
-            if not is_supported_audio(path):
+            if not is_supported_media(path):
                 unsupported += 1
                 continue
             key = canonical_source(path)

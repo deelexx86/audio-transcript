@@ -5,14 +5,18 @@ from pathlib import Path
 import av
 
 
-SUPPORTED_EXTENSIONS = frozenset({".ogg", ".mp3", ".m4a", ".wav", ".webm", ".amr"})
+SUPPORTED_EXTENSIONS = frozenset({
+    ".ogg", ".mp3", ".m4a", ".wav", ".webm", ".amr",
+    ".mp4", ".m4v", ".mkv", ".mov", ".avi", ".wmv", ".asf", ".flv",
+    ".mpg", ".mpeg", ".ts", ".mts", ".m2ts", ".vob", ".ogv", ".3gp", ".3g2",
+})
 
 
 class AudioDecodeError(RuntimeError):
     pass
 
 
-def is_supported_audio(path: str | Path) -> bool:
+def is_supported_media(path: str | Path) -> bool:
     return Path(path).suffix.casefold() in SUPPORTED_EXTENSIONS
 
 
@@ -21,7 +25,7 @@ def scan_folder(folder: str | Path) -> list[Path]:
     if not directory.is_dir():
         return []
     return sorted(
-        (entry for entry in directory.iterdir() if entry.is_file() and is_supported_audio(entry)),
+        (entry for entry in directory.iterdir() if entry.is_file() and is_supported_media(entry)),
         key=lambda path: path.name.casefold(),
     )
 

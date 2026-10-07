@@ -69,7 +69,7 @@ class MainWindow(QMainWindow):
         title_block = QVBoxLayout()
         title = QLabel("Audio Transcript")
         title.setObjectName("title")
-        subtitle = QLabel("Faithful transcripts from local audio")
+        subtitle = QLabel("Faithful transcripts from local audio and video")
         subtitle.setObjectName("subtitle")
         title_block.addWidget(title)
         title_block.addWidget(subtitle)
@@ -138,7 +138,10 @@ class MainWindow(QMainWindow):
         queue_layout = QVBoxLayout(queue_panel)
         queue_layout.setContentsMargins(0, 0, 0, 0)
         queue_layout.setSpacing(7)
-        drop_hint = QLabel("Drop audio files here  •  OGG, MP3, M4A, WAV, WEBM, AMR")
+        drop_hint = QLabel("Drop audio or video files here")
+        drop_hint.setToolTip("Supported formats: " + ", ".join(
+            extension.removeprefix(".").upper() for extension in sorted(SUPPORTED_EXTENSIONS)
+        ))
         drop_hint.setObjectName("dropHint")
         drop_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         queue_layout.addWidget(drop_hint)
@@ -345,7 +348,7 @@ class MainWindow(QMainWindow):
         initial = self.settings.last_source_directory or str(INBOX_DIR)
         pattern = " ".join(f"*{extension}" for extension in sorted(SUPPORTED_EXTENSIONS))
         files, _ = QFileDialog.getOpenFileNames(
-            self, "Add audio files", initial, f"Audio files ({pattern});;All files (*)"
+            self, "Add audio or video files", initial, f"Audio and video files ({pattern});;All files (*)"
         )
         if files:
             self.settings.last_source_directory = str(Path(files[0]).parent)
@@ -353,7 +356,7 @@ class MainWindow(QMainWindow):
 
     def _choose_folder(self) -> None:
         initial = self.settings.last_source_directory or str(INBOX_DIR)
-        folder = QFileDialog.getExistingDirectory(self, "Add audio folder", initial)
+        folder = QFileDialog.getExistingDirectory(self, "Add audio or video folder", initial)
         if folder:
             self.settings.last_source_directory = folder
             self._add_paths(scan_folder(folder))
@@ -383,7 +386,7 @@ class MainWindow(QMainWindow):
         if result.missing:
             messages.append(f"{result.missing} missing skipped")
         if not messages:
-            messages.append("No supported audio files found")
+            messages.append("No supported audio or video files found")
         self.statusBar().showMessage(" • ".join(messages), 6000)
         self._update_actions()
         if result.added and self.table.currentRow() < 0:

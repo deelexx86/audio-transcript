@@ -12,6 +12,37 @@ from audio_transcript.queueing import QueueStatus
 from audio_transcript.ui import MainWindow
 
 
+def test_video_file_picker_folder_inbox_and_drop(monkeypatch, tmp_path):
+    from PySide6.QtCore import QMimeData, QPointF, Qt, QUrl
+    from PySide6.QtGui import QDropEvent
+
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow(SettingsStore(tmp_path / "settings.json"))
+    sources = [tmp_path / name for name in ("picked.MP4", "folder.mkv", "inbox.mov", "dropped.avi")]
+    for source in sources:
+        source.touch()
+    monkeypatch.setattr("audio_transcript.ui.probe_duration", lambda _: 1.0)
+    def choose_files(parent, title, initial, filters):
+        assert "video" in title
+        assert all(f"*.{ext}" in filters for ext in ("mp4", "mkv", "mov", "avi", "wmv"))
+        return [str(sources[0])], ""
+    monkeypatch.setattr("audio_transcript.ui.QFileDialog.getOpenFileNames", choose_files)
+    window._choose_files()
+    monkeypatch.setattr("audio_transcript.ui.QFileDialog.getExistingDirectory", lambda *args: str(tmp_path))
+    monkeypatch.setattr("audio_transcript.ui.scan_folder", lambda folder: [sources[1]] if folder == str(tmp_path) else [sources[2]])
+    window._choose_folder()
+    window._add_inbox()
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(str(sources[3]))])
+    event = QDropEvent(QPointF(0, 0), Qt.DropAction.CopyAction, mime, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
+    window.dropEvent(event)
+    app.processEvents()
+    assert event.isAccepted()
+    assert [item.source for item in window.queue.items] == sources
+    assert window.table.rowCount() == 4 and window.transcribe_button.isEnabled()
+    window.close()
+
+
 def test_main_window_workflow_controls_and_resize(monkeypatch, tmp_path: Path) -> None:
     app = QApplication.instance() or QApplication([])
     window = MainWindow(SettingsStore(tmp_path / "settings.json"))
