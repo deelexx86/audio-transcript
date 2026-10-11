@@ -1,1344 +1,270 @@
-# Audio Transcript — Product & Implementation Brief
+# Audio Transcript — Product, UX & Engineering Brief
 
-**Repository:** `D:\projects\audio-transcript`  
-**Target platform:** Windows 11  
-**Target hardware:** AMD Ryzen 5 5600, 64 GB RAM  
-**Status:** READY FOR OWNER REVIEW  
-**Purpose:** Source of truth for product scope, UX behavior, filesystem rules, privacy boundaries and MVP acceptance criteria.
+**Repository:** `deelexx86/audio-transcript`  
+**Local workspace:** `D:\projects\audio-transcript`  
+**Platform:** Windows 11  
+**Status:** V2 ACCEPTED — 2026-10-11; R0 governance baseline  
+**Reference implementation:** `main` at `793c500aa072c0005ef282fa6a0383ef904d113b` (reviewed 2026-10-11)  
+**Artifact role:** Maintained source of truth for product boundaries, user workflows, engineering constraints, and acceptance requirements.  
 
----
-
-## 1. Purpose
-
-`Audio Transcript` is a small local desktop application for converting voice messages and audio files into faithful text transcripts.
-
-The primary use case is:
-
-> Telegram voice message → local transcription → TXT / Markdown artifact → transfer to ChatGPT for commercial negotiation analysis.
-
-The application is an internal working tool.
-
-It is **not** intended to become:
-
-- a commercial SaaS product;
-- a transcription platform;
-- a document-management system;
-- a negotiation-analysis system;
-- a Telegram bot;
-- a cloud service.
-
-The main design principle is:
-
-> Build the simplest reliable local tool that makes audio → transcript a short, repeatable workflow.
+> This document describes both the accepted, already implemented application and the next development increments. A planned capability is **not** a claim that it currently works. For actual runtime behavior, inspect the current code and tests.
 
 ---
 
-## 2. Primary goals
+## 1. Product purpose and boundary
 
-The MVP must allow the user to:
+Audio Transcript is a Windows desktop application for transforming spoken content from local audio, local video, and supported online media into faithful, useful text artifacts.
 
-1. take a Telegram `.ogg` voice message or another common audio file;
-2. add it to the application by drag & drop, file selection, folder selection or the repository `inbox`;
-3. transcribe it entirely on the local computer;
-4. inspect the transcript inside the application;
-5. save the result as `.txt` and `.md`;
-6. copy the clean transcript directly to the clipboard;
-7. pass the transcript to ChatGPT for further analysis.
+Typical contexts include work, learning, meetings, lectures, negotiations, and personal tasks. The application is not limited to Telegram voice messages or commercial conversations.
 
-No manual audio conversion should be required.
+**Core workflow:**
 
-No terminal interaction should be required during normal daily use.
+`audio / video / supported URL → source acquisition → speech recognition → preview → TXT / Markdown → user's downstream workflow`
 
----
+The application's principal responsibility **ends with an accurate and accessible transcript**. Summarization, interpretation, meeting notes, dialogue reconstruction, and other semantic work belong to tools selected separately by the user (for example, ChatGPT). They are **not** part of the planned application pipeline.
 
-## 3. Core product priorities
+Accuracy of meaning and preservation of critical wording take priority over literary polish. Special attention is required for negations, numbers, amounts, names, dates, technical terminology, qualifiers, and Russian/English code-switching.
 
-Priorities, in order:
-
-1. **Transcript fidelity**
-2. **Local privacy**
-3. **Reliable workflow**
-4. **Simple batch processing**
-5. **Clear UI state**
-6. **Low maintenance complexity**
-7. **Reasonable CPU performance**
-8. Visual polish
-
-The application must preserve the source meaning as closely as the selected speech-to-text model allows.
-
-For negotiation analysis, the following details are especially important:
-
-- exact wording;
-- argument order;
-- negations;
-- monetary amounts;
-- names;
-- reservations and qualifications;
-- emotionally meaningful wording;
-- technical terminology;
-- mixed Russian / English terminology.
-
-The application must not intentionally rewrite the speaker's meaning for readability.
+**Out of scope for the current roadmap:** automatic summaries, dialogue compilation/export, speaker diarization or recognition, embedded chat/LLM analysis, document-management platform, cloud synchronization, accounts, backend/server, and database by default. Any future expansion requires a distinct owner decision.
 
 ---
 
-## 4. Local-only architecture
+## 2. Current accepted product — implemented baseline
 
-The MVP must use fully local speech-to-text inference.
+The following describes capabilities already present in the referenced `main` implementation, not future requirements:
 
-There must be no dependency on:
+- **Desktop/runtime:** Python, PySide6, repository-local `.venv`, `run.bat`, no separate application installation.
+- **Local STT:** `faster-whisper` + CTranslate2, CPU `int8`, repository-local `Whisper large-v3` (Accuracy) and `large-v3-turbo` (Fast). Model download/bootstrap is explicit; after setup, local-file transcription can work offline.
+- **Input:** local audio including Telegram Ogg/Opus and AMR; many local video containers; supported individual YouTube video URLs through `yt-dlp`. PyAV decodes the selected audio stream.
+- **Queue:** drag & drop, Add Files, non-recursive Add Folder and Inbox, YouTube Add Link, deduplication, ordering/reordering, column sorting, editable per-file speaker, sequential processing, Retry Selected and Remove Completed.
+- **Processing:** responsive worker-based UI, per-file statuses and progress, cancellation requests, isolated per-file failures, bounded YouTube retry behavior.
+- **Outputs:** append-safe `transcript.txt` and `transcript.md`, preview, Copy and Open Folder, dated workspace folders or same-source-folder mode for local files.
+- **Localization:** English, Russian, Spanish, German; Qt Linguist catalogs, immediate language switching, persisted interface choice and localized documentation.
+- **Private runtime workspace:** ignored `models/`, `inbox/`, `transcripts/`, settings and temporary content.
 
-- OpenAI Speech-to-Text API;
-- any other cloud transcription API;
-- remote backend;
-- local backend/server;
-- user accounts;
-- authentication;
-- API keys;
-- cloud storage;
-- database.
-
-Normal transcription must work without internet access after the application dependencies and model files have been installed.
-
-Initial development/setup may use the internet to:
-
-- install Python dependencies;
-- download required speech-to-text model files.
-
-Normal runtime transcription must not initiate network requests.
-
-No telemetry, analytics or remote crash reporting should be added.
+Do not regress any of these accepted workflows while implementing V2 increments. Validate against the current code and README, not against assumptions from the original MVP.
 
 ---
 
-## 5. Technology baseline
+## 3. Stable engineering invariants
 
-The intended MVP stack is:
-
-- Python 3.11+;
-- PySide6 for the Windows desktop UI;
-- `faster-whisper`;
-- CTranslate2;
-- PyAV for local audio decoding.
-
-The implementation is CPU-first.
-
-Target hardware:
-
-- AMD Ryzen 5 5600;
-- 6 cores / 12 threads;
-- 64 GB DDR4 RAM;
-- Windows 11.
-
-The MVP must not depend on a discrete GPU.
-
-CPU `int8` inference is the preferred baseline unless implementation testing demonstrates a materially better supported configuration.
-
-A change of the fundamental technology stack is allowed only if a concrete blocker makes the accepted stack impractical.
-
-Do not replace the stack merely because another framework is more modern or theoretically more extensible.
+1. **Local is the default.** The existing CPU mode must remain usable with no cloud account, API key, or network connection after local setup. Future GPU support must also perform inference locally.
+2. **External transfers are explicit and contextual.** YouTube fetching uses the network to acquire source media. A future cloud STT option may upload media **only after the user deliberately selects that mode and is clearly informed**. Never silently switch from local to cloud.
+3. **Source preservation.** Do not rename, move, modify, delete, or permanently duplicate local source media as a processing side effect.
+4. **Faithful transcript.** No automatic LLM rewriting, semantic correction, summarization, or inferred dialogue restructuring. STT model punctuation is acceptable.
+5. **Sequential, observable work.** Preserve a responsive GUI, predictable queue order, cancellation semantics, isolated failures, and inspectable task states. Concurrent transcription requires separate justification.
+6. **Safe artifacts.** Never silently overwrite successful outputs. Preserve atomic/complete-write behavior and human-readable filenames. Failures must not masquerade as successful files.
+7. **Private data do not enter Git.** Source media, models, transcripts, credentials, local settings, downloaded YouTube media, and generated caches remain ignored. Preserve tracked `.gitignore` markers for the runtime directories.
+8. **Small inspectable architecture.** Keep Python/PySide6/PyAV and the existing desktop workflow unless an evidence-backed improvement requires a bounded change. Avoid speculative service layers or introducing a database by default.
+9. **Truthful status.** Show what the application knows; no fabricated ETA, upload progress, quality promises, or successful verification claims.
 
 ---
 
-## 6. Speech-to-text model profiles
+## 4. Input and output contract
 
-The UI exposes two user-facing model profiles.
+### 4.1 Inputs
 
-### Accuracy
+The application accepts media through local file/folder selection, drag & drop, `inbox/`, and supported YouTube URLs. The current supported extension list and URL forms are defined in the implementation and maintained in README; they should not be duplicated in multiple competing hard-coded lists.
 
-Default profile.
+Folder and Inbox scanning are non-recursive unless a future task explicitly changes this. For video, speech recognition uses an audio track; video imagery and embedded subtitles are not transcribed. Unsupported, unreadable, encrypted, or silent media must yield understandable per-item errors and must not terminate the remaining batch.
 
-Intended model:
+YouTube media acquisition is a separate, internet-dependent stage. Downloaded intermediate media stays temporary and is removed on normal completion/failure/cancellation. Hard termination may leave residual temporary files, which stabilization should handle safely.
 
-`Whisper large-v3`
+### 4.2 Workspace and outputs
 
-Purpose:
-
-- maximize transcript quality;
-- use for commercial negotiations and recordings where exact wording matters most.
-
-### Fast
-
-Alternative profile.
-
-Intended model:
-
-`Whisper large-v3-turbo`
-
-Purpose:
-
-- reduce processing time when speed is more important;
-- provide a practical fallback if `large-v3` is too slow for a particular batch or recording.
-
-The user-facing UI must use the names:
-
-- `Accuracy — Whisper large-v3`
-- `Fast — Whisper large-v3-turbo`
-
-Implementation may map these profiles to the exact model identifiers required by the selected runtime.
-
-The application must not expose low-level model parameters such as:
-
-- `compute_type`;
-- beam size;
-- thread count;
-- internal model paths;
-- CTranslate2 settings.
-
-Those are implementation concerns, not normal user controls.
-
----
-
-## 7. Model storage
-
-Model files must be stored inside the repository workspace:
-
-```text
-D:\projects\audio-transcript\models\
-```
-
-Model files must never be committed to Git.
-
-The `models` directory itself must remain part of the repository structure.
-
-Recommended Git pattern:
-
-```text
-models\
-└─ .gitignore
-```
-
-with directory-local ignore behavior equivalent to:
-
-```gitignore
-*
-!.gitignore
-```
-
-The application must explicitly use the repository-local model storage rather than silently scattering downloaded model files across unrelated user cache directories where reasonably possible.
-
-Normal runtime must use already-local model files.
-
-If a required model is missing, the application must show a clear actionable error rather than failing obscurely.
-
-Silent network downloads during normal transcription are not desired.
-
----
-
-## 8. Repository and runtime model
-
-The repository is also the operating directory of the application.
-
-Canonical location:
-
-```text
-D:\projects\audio-transcript
-```
-
-No separate application installation is required for the MVP.
-
-The expected top-level runtime structure is:
+The repository is both source checkout and application runtime home:
 
 ```text
 D:\projects\audio-transcript\
-│
+├─ .venv\                 # local, ignored
+├─ models\                # tracked directory marker; contents ignored
+├─ inbox\                 # tracked directory marker; contents ignored
+├─ transcripts\           # tracked directory marker; contents ignored
+├─ config\                # local settings and temporary runtime material
+├─ src\
+├─ tests\
 ├─ BRIEF.md
 ├─ AGENTS.md
-├─ README.md
-├─ run.bat
-│
-├─ .venv\
-├─ models\
-├─ inbox\
-├─ transcripts\
-├─ config\
-├─ application source
-└─ tests
+└─ run.bat
 ```
 
-Exact internal source-code organization may be chosen during implementation as long as it remains small, understandable and consistent with this brief.
-
----
-
-## 9. Development / setup responsibility
-
-Codex is expected to perform through the terminal everything that can reasonably be automated, including:
-
-- repository initialization where needed;
-- Python virtual environment creation;
-- Python dependency installation;
-- model download/bootstrap;
-- local configuration;
-- test execution;
-- application launch;
-- available CLI-based dependency setup.
-
-The user should only be asked to perform a manual installation when a dependency genuinely requires a normal Windows GUI installer or equivalent manual Windows interaction.
-
-Avoid manual installation requirements whenever a reliable terminal-based solution exists.
-
----
-
-## 10. Application launch
-
-Normal use must not require opening a terminal.
-
-The repository must provide:
+Canonical workspace output:
 
 ```text
-run.bat
+transcripts\YYYY\YYYY-MM-DD\source-name\
+    transcript.txt
+    transcript.md
 ```
 
-which launches the application using the repository-local virtual environment.
+The same-folder mode creates a dedicated `_transcript` directory beside the source. If an output directory already exists, use a readable incremented suffix (`_2`, `_3`, ...). YouTube output uses the workspace irrespective of the same-folder preference.
 
-Expected conceptual behavior:
+`transcript.txt` contains **only recognized text**. `transcript.md` records compact descriptive metadata such as source, processing date/time, source duration, detected language, optional speaker, actual engine/model, and a matching transcript body. For YouTube, it may also include the normalized source URL and title. Do not expose private system paths unnecessarily.
 
-```text
-run.bat
-  ↓
-.venv Python
-  ↓
-desktop application
-```
-
-Double-clicking `run.bat` should be sufficient for normal application startup after initial setup is complete.
+Future engines must preserve these output contracts. Engine-specific fields may be added without rewriting or invalidating older artifacts.
 
 ---
 
-## 11. Input artifact organization
+## 5. UI and localization contract
 
-The repository contains a canonical optional input directory:
+The main window remains a focused workspace for source intake, queue control, progress, transcript preview, copying, and opening outputs. It must not become a configuration dashboard.
 
-```text
-D:\projects\audio-transcript\inbox\
-```
+Current interface languages — **English, Russian, Spanish, German** — remain supported. Any new user-visible status, timer, label, dialog, error explanation, or setting must be localized in all four Qt catalogs; editable `.ts` and compiled `.qm` are maintained together. Internal identifiers and artifact content must not depend on translated text. Native system dialogs may follow Windows locale.
 
-The directory exists to prevent local organizational chaos and provide a predictable location for saved Telegram messages.
-
-Example:
-
-```text
-inbox\
-├─ audio_2026-08-31_12-44-51.ogg
-├─ audio_2026-08-31_13-02-18.ogg
-└─ meeting.m4a
-```
-
-The `inbox` directory is a convenience workflow, not a restriction.
-
-The application must also accept audio files from arbitrary local filesystem locations.
-
-The application must never automatically:
-
-- copy source audio into another permanent location;
-- rename source audio;
-- move source audio;
-- delete source audio.
-
-Source files remain under user control.
+The next UI improvement introduces a **separate Settings window/dialog**, retaining only frequently changed choices and concise active-engine status in the main window. Preserve efficient operation at ordinary Windows window sizes and display scaling. Implement this as a bounded reorganization of the existing UI, not a framework rewrite.
 
 ---
 
-## 12. Input formats
+## 6. R1 — Processing Time, Speed & ETA (next functional increment)
 
-Mandatory supported formats:
+### 6.1 User outcome
 
-- `.ogg`, including Telegram Ogg/Opus voice messages;
-- `.mp3`;
-- `.m4a`;
-- `.wav`;
-- `.webm`.
+For a long recording, the user can see how long processing has taken, whether the operation is moving forward, and a reasonable **approximate remaining-time estimate when enough evidence exists**. The same timing contract should be reusable by later CPU, GPU, and cloud engines.
 
-Other common audio formats may be supported where PyAV can decode them reliably without materially increasing complexity.
+### 6.2 Required information
 
-The application should prefer capability-based decoding over requiring manual format conversion.
+While processing a file, show:
 
-Unsupported or corrupted files must produce a clear per-file error.
+- **Elapsed wall-clock time** since active processing began, updated while the worker is busy.
+- **Processing phase** (for example, preparing/loading, downloading, transcribing, saving, waiting to retry).
+- **Progress** where grounded in a measurable media position or documented download signal.
+- **Estimated time remaining (ETA)** only while the estimate is defensible; otherwise show a localized state such as `Оценивается…` or `Недоступно`.
+- **Effective transcription speed**, where measurable, expressed consistently as audio-time processed per wall-clock time (`× realtime`).
+- **Actual processing duration** when complete, available for later comparison/history and, where appropriate, new artifact metadata.
 
-One bad file must not terminate an entire batch.
+For a sequential batch, preserve a clear completed/running/queued summary. A **whole-batch ETA is optional** and must not be shown unless sufficient durations and representative throughput are available; never extrapolate uncertain YouTube/network delays as known.
 
----
+### 6.3 Estimation contract
 
-## 13. Ways to add audio
+- Use monotonic elapsed-time measurement for durations, not wall-clock timestamps vulnerable to clock changes.
+- Distinguish **model loading**, source acquisition, transcription, and artifact saving. Do not extrapolate one phase's speed into another.
+- For local `faster-whisper`, progress may use completed segment time relative to audio duration. Smoothed processing throughput may estimate remaining transcription time.
+- Suppress early unstable numerical estimates until meaningful progress/time samples exist. Smooth updates and round appropriately rather than showing false second-level precision.
+- Refresh elapsed time on the UI clock even if no new segment has been delivered, without blocking the Qt event loop.
+- If duration is unknown, progress stalls, throughput is unreliable, or an opaque provider supplies no usable progress, prefer `ETA unavailable` over a guess.
+- On Stop, error, or completion, stop the running timer, retain the measured elapsed duration for that task, and never show a running ETA for a terminal state.
+- Retry timing starts a new attempt; do not present a previous attempt's estimate as belonging to the current run.
 
-The main UI must support four input paths.
+### 6.4 R1 acceptance
 
-### Drag & drop
-
-Audio files can be dropped directly into the main application window / queue area.
-
-This is part of the MVP, not deferred polish.
-
-### Add Files
-
-The user can select one or multiple audio files using the standard Windows file picker.
-
-### Add Folder
-
-The user can select a folder.
-
-The application adds supported audio files located directly in that folder.
-
-Folder scanning is **non-recursive** in the MVP.
-
-Subdirectories are not traversed.
-
-### Inbox
-
-A dedicated `Inbox` action scans:
-
-```text
-D:\projects\audio-transcript\inbox
-```
-
-and adds supported files located directly in that folder.
-
-Inbox scanning is non-recursive.
-
-Processing a file from `inbox` must not move or delete it.
+- Current-file elapsed timer works during model startup and lengthy inference, including periods without progress callbacks.
+- ETA appears only after meaningful evidence; it remains approximate and avoids pathological jumps or negative values.
+- Stop, failures, retries, batch transitions, and YouTube download/retry states display coherent times and reset correctly.
+- Existing transcript accuracy, sequential queue behavior, output safety, and four interface languages are unaffected.
+- Deterministic tests cover timing and estimation boundaries using a controllable clock; a long real-world audio smoke evaluates usability of ETA.
 
 ---
 
-## 14. Duplicate input behavior
+## 7. R2 — CI and runtime stabilization
 
-Within the current queue, the same absolute source path must not be added twice.
+Add GitHub Actions verification suitable for a public Windows/Python desktop repository:
 
-If duplicate additions are attempted:
+- Python tests and import/runtime smoke without downloading several-gigabyte STT models.
+- Translation-catalog completeness/build checks for all four languages.
+- Packaging/import sanity as appropriate; no installer is required.
+- No private media, model files, API credentials, or personal transcripts in CI artifacts or commits.
 
-- ignore the duplicate;
-- do not show an intrusive modal dialog;
-- optionally show a short status message such as:
-
-```text
-1 duplicate skipped
-```
-
-This rule applies to files added through:
-
-- drag & drop;
-- Add Files;
-- Add Folder;
-- Inbox.
+Review operational edge cases supported by evidence: cancellation and closing during work, incomplete or leftover temporary downloads, corrupted settings, artifact-write failures, file/path errors, and long-running tasks. Prefer targeted fixes and regression tests to a broad refactor. CI cannot replace real local audio/video and GUI acceptance.
 
 ---
 
-## 15. Output artifact organization
+## 8. R3 — Settings UX
 
-The canonical output directory is:
+Move growing configuration out of the main workspace into a dedicated Qt settings window/dialog, without changing the application framework.
 
-```text
-D:\projects\audio-transcript\transcripts\
-```
+Potential groups are General, Local Models, Acceleration, Cloud STT, and Files/History; **only expose groups when the associated feature exists**. Preserve live usability and the current model/output/speaker workflow. Avoid building empty speculative screens.
 
-The default output mode is:
+Store non-secret preferences in ignored `config/settings.json`. Future API secrets must be handled separately by a suitable OS credential facility, never in Git, plain application settings, or logs.
 
-`Workspace / transcripts`
-
-Outputs are organized by processing date:
-
-```text
-transcripts\
-└─ YYYY\
-   └─ YYYY-MM-DD\
-      └─ source-name\
-         ├─ transcript.txt
-         └─ transcript.md
-```
-
-Example:
-
-```text
-transcripts\
-└─ 2026\
-   └─ 2026-08-31\
-      ├─ audio_2026-08-31_12-44-51\
-      │  ├─ transcript.txt
-      │  └─ transcript.md
-      │
-      └─ meeting\
-         ├─ transcript.txt
-         └─ transcript.md
-```
-
-Source audio must not be copied into the transcript directory.
+Acceptance: clear access to settings, persisted behavior, predictable changes during an active job, responsive layouts, and translation coverage in all four languages.
 
 ---
 
-## 16. Alternative output mode
+## 9. R4 — Transcript History
 
-The UI also supports:
+Make successful prior transcription results accessible from inside the application without requiring Explorer navigation.
 
-`Same folder as source`
+Minimum capabilities:
 
-In this mode the application creates a dedicated transcript directory beside the source file rather than placing loose generated files into the source directory.
+- Discover existing results in `transcripts/`, including artifacts created before the history feature.
+- Present source name/title, processing date, duration, engine/model where available, and artifact location.
+- Open/preview the existing transcript, Copy, and Open Folder.
+- Search/filter by available filename/title/source metadata.
+- Handle missing, moved, partially written, malformed, or inaccessible files gracefully.
 
-Conceptually:
+Prefer filesystem artifacts as the source of truth. A small private local index may track outputs written outside the workspace in **Same folder as source** mode, without copying transcript content. Do not add a database, mandatory transcript ingestion, or full-text indexing without a demonstrated need.
 
-```text
-meeting.m4a
-meeting_transcript\
-├─ transcript.txt
-└─ transcript.md
-```
-
-The exact suffix may be adjusted if necessary, but the following rules must remain:
-
-- generated artifacts are grouped together;
-- source audio is untouched;
-- no silent overwrite occurs.
+History is **not** a conversation compiler, semantic library, or document-management system.
 
 ---
 
-## 17. Output collisions and retranscription
+## 10. R5 — Optional local GPU inference
 
-Generated artifacts are append-safe by default.
+GPU support is a **conditional capability**, not a justification to destabilize the working CPU engine.
 
-Existing output must never be silently overwritten.
+First run a bounded feasibility and benchmark task on the **actual installed hardware and drivers**. Establish device compatibility and compare representative recordings against the accepted CPU baseline for speed, fidelity, reliability, memory, and setup complexity. The backend is selected from evidence; examples include CTranslate2/CUDA where supported or an alternative Vulkan-capable local backend where practical.
 
-If the target output directory already exists, create a human-readable incremented variant.
+Proceed to implementation only if the measured benefit and maintainability justify it.
 
-Example:
+If implemented:
 
-```text
-meeting\
-meeting_2\
-meeting_3\
-```
-
-or in same-source-folder mode:
-
-```text
-meeting_transcript\
-meeting_transcript_2\
-meeting_transcript_3\
-```
-
-Do not use UUIDs in user-visible folder names.
-
-Do not implement content hashing, transcript history databases or complex version management in the MVP.
+- Keep CPU as a fully functional fallback **selected explicitly or predictably**, with no hidden downgrade of model quality.
+- Detect/report unavailable devices, missing driver/runtime components, model-format requirements, and configuration errors intelligibly.
+- Preserve the existing queue, transcript, artifact, localization, Stop, and timing/ETA contracts.
+- Do not demand a discrete GPU for ordinary installation or use.
 
 ---
 
-## 18. Git handling of runtime artifacts
+## 11. R6 — Optional cloud STT provider
 
-The following directories must exist as part of repository structure but their generated/private contents must be ignored by Git:
+A cloud STT option may improve latency or quality for some recordings, but it changes confidentiality, cost, network, and failure behavior. It must remain **opt-in**, not the default.
 
-```text
-models\
-inbox\
-transcripts\
-```
+Provider and initial model are **not yet selected**. First compare concrete candidates on representative Russian, English-term, short and long recordings, considering fidelity, latency, actual total cost, accepted media formats and upload size/duration limits, and integration complexity. Select one first production provider based on evidence. Do not implement multiple providers just because an abstraction permits it.
 
-Recommended pattern:
+Implementation requirements, if authorized:
 
-```text
-<directory>\
-└─ .gitignore
-```
+- Explicit user choice of cloud processing and clear indication that media is transmitted to the provider; no automatic local-to-cloud fallback.
+- Protect API credentials using an appropriate Windows secret store, separate from ordinary settings, source code, Git, logs, and exported transcripts.
+- Honor provider input limits. For long recordings, any local conversion/chunking must preserve speech continuity as well as practical; explain residual limitations.
+- Bound retries, timeouts, upload operations, and cost exposure. Show real elapsed time and only credible progress/ETA.
+- No raw media, auth headers, credentials, or provider response payloads in persistent diagnostic logs.
+- Output remains standard UTF-8 TXT/Markdown with actual provider/model identification and source provenance. Source media remains unchanged; local and cloud histories remain accessible through the same result browser.
+- Local CPU transcription remains fully usable if the network or provider fails or the user has no API key.
 
-where all contents except the `.gitignore` marker are ignored.
-
-The following must also be excluded from Git:
-
-- `.venv`;
-- local settings;
-- downloaded model files;
-- source audio;
-- generated transcripts;
-- temporary files;
-- Python caches;
-- local IDE/runtime files where applicable.
-
-The repository must never accidentally become an archive of commercial negotiation recordings or transcripts.
+Users decide whether a particular recording (especially recordings of other people) is appropriate for external transmission. The app must not obscure that decision.
 
 ---
 
-## 19. Settings
+## 12. Development sequence and acceptance gates
 
-Application settings are stored locally.
+| Step | Status at this brief | Execution boundary |
+|---|---|---|
+| R0 — Product contract refresh | ACCEPTED — 2026-10-11 | Maintained product and roadmap contract; supersedes the MVP-only brief |
+| R1 — Processing Time & ETA | Planned / next | Independent timing instrumentation, credible progress estimation, localized UI and tests |
+| R2 — CI & Stability | Planned | Windows automated verification and bounded reliability fixes |
+| R3 — Settings UX | Planned | Dedicated settings UI, no change to core user workflow |
+| R4 — History | Planned | Access existing transcript artifacts in-app without duplicating content |
+| R5 — GPU feasibility/integration | Conditional | Benchmark first; implementation only after acceptance of evidence |
+| R6 — Cloud STT | Conditional | Provider choice, privacy and long-audio design gate before implementation |
+| R7 — Integration acceptance | Planned after approved changes | Revalidate local baseline, additional modes, localization, docs, privacy and Git hygiene |
 
-Preferred location:
+Use scoped Codex tasks with an accepted starting SHA, bounded implementation, proportional tests, manual smoke where needed, and PR/merge after owner acceptance. Do not combine GPU, cloud, history, and UI redesign into one implementation prompt. Do not create extra governance documents merely to restate this brief.
 
-```text
-D:\projects\audio-transcript\config\settings.json
-```
-
-The runtime settings file must not be committed.
-
-Settings may include:
-
-- selected model profile;
-- output mode;
-- last source directory;
-- default speaker;
-- window geometry;
-- splitter position.
-
-Do not create a database for settings.
-
-No dedicated settings screen is required.
+**Compatibility criterion across stages:** a user with the existing Windows installation and local model files can continue transcribing local audio/video with the accepted CPU profiles and familiar TXT/Markdown outputs.
 
 ---
 
-## 20. Main UI architecture
+## 13. Documentation and public repository
 
-The application uses one primary desktop window.
+`BRIEF.md` states maintained product intent; `AGENTS.md` states agent/repository operating instructions; README files document actual usage. Keep English, Russian, Spanish and German README guides aligned when user-facing behavior changes.
 
-Do not create:
+The previous `BRIEF.md` originated as a one-time MVP contract. This consolidated revision supersedes its outdated restrictions (such as the absolute ban on network input and the original Telegram-only framing) while preserving local privacy and faithful transcript principles. Public documentation must distinguish **offline local processing**, **online source acquisition**, and **opt-in future cloud recognition**.
 
-- wizard flows;
-- multiple configuration screens;
-- tab-based product architecture;
-- separate dashboard;
-- document library;
-- history browser.
-
-The main application should expose the entire normal workflow on one screen.
-
-Conceptual layout:
-
-```text
-┌──────────────────────────────────────────────────────────────────────────────┐
-│ Audio Transcript                                      LOCAL • OFFLINE       │
-│                                                                              │
-│ Model       [ Accuracy — Whisper large-v3 ▼ ]                                │
-│ Speaker     [ ______________________________ ]                               │
-│ Output      [ Workspace / transcripts      ▼ ]                              │
-│                                                                              │
-│ [ + Files ]   [ + Folder ]   [ Inbox ]   [ Remove ]   [ Clear ]             │
-├──────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│                        Drop audio files here                                 │
-│                                                                              │
-│ File                         Duration   Speaker       Status                  │
-│ audio_001.ogg                   02:43   Евгений       Done                   │
-│ audio_002.ogg                   01:16   Евгений       Transcribing 62%        │
-│ meeting.m4a                     17:22   —              Queued                 │
-│                                                                              │
-├──────────────────────────────────────────────────────────────────────────────┤
-│ Transcript — audio_001.ogg                            [ Copy ] [ Folder ]     │
-│ ──────────────────────────────────────────────────────────────────────────── │
-│                                                                              │
-│ Transcript text...                                                          │
-│                                                                              │
-├──────────────────────────────────────────────────────────────────────────────┤
-│ 1 completed • 1 running • 1 queued             [ progress ]                 │
-│                                                    [ Stop ] [ Transcribe ]   │
-└──────────────────────────────────────────────────────────────────────────────┘
-```
-
-The exact visual implementation may differ, but the interaction model and information hierarchy must remain recognizable.
+Do not include private recordings, personal transcript content, credentials, downloaded models, or private runtime paths in public repository files.
 
 ---
 
-## 21. UI principles
+## 14. Primary rule
 
-The UI should feel like a focused Windows work utility.
+> Improve the user's speed and reliability of reaching a faithful transcript, without turning Audio Transcript into an automatic interpretation platform.
 
-Priorities:
-
-- clear hierarchy;
-- reasonable spacing;
-- readable typography;
-- obvious enabled/disabled states;
-- useful resizing;
-- no visual clutter;
-- no decorative complexity;
-- no unnecessary custom widgets where standard Qt controls are sufficient.
-
-Do not spend implementation complexity on visual effects.
-
-Good UX is defined by workflow efficiency and clarity, not decorative design.
-
----
-
-## 22. Header / global controls
-
-The main control area contains:
-
-### Model
-
-Two profiles:
-
-- `Accuracy — Whisper large-v3`
-- `Fast — Whisper large-v3-turbo`
-
-Default:
-
-`Accuracy`
-
-### Speaker
-
-A free-text field.
-
-The value acts as the default speaker assigned to files added after the value is set.
-
-The field is optional.
-
-Speaker name is metadata only.
-
-It is **not** speaker diarization and must not imply automated speaker recognition.
-
-### Output
-
-Options:
-
-- `Workspace / transcripts`
-- `Same folder as source`
-
-Default:
-
-`Workspace / transcripts`
-
----
-
-## 23. Queue
-
-Each source audio file appears as one queue item.
-
-Required visible columns:
-
-- File
-- Duration
-- Speaker
-- Status
-
-Do not expose unnecessary technical columns such as:
-
-- absolute path;
-- codec;
-- bitrate;
-- model filesystem path;
-- internal IDs.
-
-The full source path may be exposed through a tooltip or contextual detail if useful.
-
-The Speaker value must be editable per queue item.
-
-This allows one batch to contain files from different speakers.
-
----
-
-## 24. Queue actions
-
-Required actions:
-
-- `+ Files`
-- `+ Folder`
-- `Inbox`
-- `Remove`
-- `Clear`
-- `Transcribe`
-- `Stop`
-
-`Remove` removes selected queued items from the UI only.
-
-It must not delete source files or generated files.
-
-`Clear` clears queue state.
-
-It must not delete source files or generated artifacts.
-
-Actions should be appropriately disabled while their operation would be unsafe.
-
----
-
-## 25. Processing model
-
-Batch transcription is sequential in the MVP.
-
-Conceptually:
-
-```text
-file 1
-  ↓
-file 2
-  ↓
-file 3
-```
-
-Do not implement concurrent transcription.
-
-Reasons:
-
-- predictable CPU use;
-- simpler failure behavior;
-- simpler cancellation;
-- simpler progress;
-- lower implementation complexity.
-
-The UI must remain responsive while transcription is running.
-
-Long-running audio decode and inference must not execute on the main UI thread.
-
----
-
-## 26. File state machine
-
-Each queue item should have a clear state.
-
-Expected states:
-
-```text
-Queued
-Preparing
-Transcribing
-Saving
-Done
-Error
-Cancelled
-```
-
-Avoid a generic ambiguous `Processing...` state when a more precise state is known.
-
----
-
-## 27. Progress behavior
-
-Where the inference runtime exposes segment timestamps, transcription progress should be estimated using:
-
-```text
-processed audio position / total duration
-```
-
-The UI should provide:
-
-- current-file progress;
-- useful batch summary.
-
-Example:
-
-```text
-1 completed • 1 running • 3 queued
-```
-
-Do not build complex per-row animated progress widgets unless needed.
-
-A text percentage in the queue plus one main progress indicator is sufficient.
-
-Progress is allowed to be approximate.
-
-Do not fabricate precision that the runtime cannot support.
-
----
-
-## 28. Stop / cancellation semantics
-
-`Stop` means:
-
-- request safe termination of the current processing sequence;
-- do not start further queued files;
-- preserve already completed outputs;
-- keep remaining queued items available for a later restart.
-
-Cancellation must not intentionally leave partially written final transcript artifacts.
-
-Temporary/intermediate resources should be cleaned up where practical.
-
-The exact ability to interrupt a model inference call may depend on runtime behavior.
-
-If immediate interruption is not technically safe, the UI must still behave honestly and stop before beginning the next file.
-
----
-
-## 29. Error behavior
-
-A single-file error must not terminate the remaining batch.
-
-Example:
-
-```text
-voice_001.ogg    Done
-voice_002.ogg    Error
-voice_003.ogg    Transcribing
-```
-
-Do not show a modal dialog for every per-file failure.
-
-When an errored queue row is selected, the transcript/detail area should show a useful error message.
-
-Example:
-
-```text
-Transcription failed
-
-Could not decode audio file.
-
-Source:
-D:\...\voice_002.ogg
-
-Details:
-<useful technical message>
-```
-
-Modal dialogs are acceptable only for errors that block the whole application or require immediate user intervention.
-
-Error messages should be understandable first and technically useful second.
-
----
-
-## 30. Transcript preview
-
-When a completed queue item is selected, the lower section shows its full transcript.
-
-The preview is:
-
-- read-only;
-- selectable;
-- scrollable;
-- plain text;
-- not summarized;
-- not semantically rewritten.
-
-The application should preserve transcript readability without changing meaning.
-
-Only trivial formatting normalization such as surrounding whitespace cleanup is acceptable.
-
----
-
-## 31. Copy action
-
-A `Copy` action must copy the clean transcript text to the Windows clipboard.
-
-It should copy the equivalent of:
-
-```text
-transcript.txt
-```
-
-It must not copy Markdown metadata unless explicitly implemented as a separate future action.
-
-Primary use:
-
-```text
-transcript
-  ↓
-Copy
-  ↓
-ChatGPT
-```
-
----
-
-## 32. Open Folder action
-
-A `Folder` / `Open Folder` action must open Windows Explorer at the generated artifact directory for the selected completed item.
-
-Example:
-
-```text
-D:\projects\audio-transcript\
-transcripts\
-2026\
-2026-08-31\
-audio_2026-08-31_12-44-51\
-```
-
-This must require one user action.
-
----
-
-## 33. TXT output contract
-
-`transcript.txt` contains only the transcript body.
-
-Example:
-
-```text
-Добрый день. По поводу нашего предложения...
-```
-
-Do not include:
-
-- Markdown metadata;
-- summary;
-- model commentary;
-- confidence explanation;
-- interpretation;
-- AI-generated correction.
-
----
-
-## 34. Markdown output contract
-
-`transcript.md` contains minimal metadata plus the same transcript.
-
-Required structure:
-
-```markdown
-# Transcript
-
-Source: audio_2026-08-25_13-41-49.ogg
-Processed: 2026-08-31 17:10
-Duration: 02:43
-Language: ru
-Speaker: Евгений
-Model: whisper-large-v3
-
-## Transcript
-
-Полный текст голосового сообщения...
-```
-
-Rules:
-
-- `Source` contains the filename, not the absolute Windows path;
-- `Processed` uses local date/time;
-- `Duration` uses a human-readable format;
-- `Language` contains detected language when available;
-- `Speaker` is omitted completely if blank;
-- `Model` records the actual transcription model used.
-
-Do not expose unrelated local filesystem information in the Markdown artifact.
-
----
-
-## 35. Transcript fidelity rules
-
-The speech-to-text result must be preserved as the authoritative transcript output.
-
-Do not add an LLM post-processing layer in the MVP.
-
-Do not automatically:
-
-- summarize;
-- rewrite;
-- improve style;
-- restructure arguments;
-- remove repetitions;
-- correct perceived speaker mistakes;
-- reinterpret unclear phrases;
-- normalize meaning;
-- change numbers based on context guesses.
-
-Punctuation or textual normalization produced directly by the selected STT model is acceptable.
-
-Application-side semantic rewriting is not.
-
-A later optional AI interpretation layer, if ever added, must remain separate from the original transcript.
-
----
-
-## 36. Language behavior
-
-Language detection should be automatic.
-
-A dedicated language selector is not required in the MVP.
-
-Detected language should be included in Markdown metadata when available.
-
-The application must remain suitable for recordings containing:
-
-- Russian;
-- English technical terms;
-- product names;
-- company names;
-- mixed Russian/English speech.
-
----
-
-## 37. Privacy and security
-
-Privacy is a core requirement.
-
-During normal transcription:
-
-- source audio remains local;
-- model inference remains local;
-- transcripts remain local;
-- no external speech-to-text API is called;
-- no cloud storage is used;
-- no telemetry is transmitted.
-
-The README must clearly state this local-processing model.
-
-Runtime audio must not be duplicated permanently unless the user explicitly copies it outside the application's normal workflow.
-
-The application must not silently archive input files.
-
----
-
-## 38. README responsibility
-
-`README.md` is operational documentation, not the product source of truth.
-
-It should be created or updated against the actual implementation.
-
-It should explain:
-
-- prerequisites;
-- initial setup;
-- model bootstrap;
-- application launch;
-- `run.bat`;
-- supported formats;
-- `inbox`;
-- `transcripts`;
-- model profiles;
-- normal workflow;
-- privacy behavior;
-- common errors/troubleshooting.
-
-If README behavior conflicts with this brief, the implementation or README should be corrected rather than silently changing this brief.
-
----
-
-## 39. Explicit non-goals for MVP
-
-Do not implement unless a later task explicitly authorizes it:
-
-- cloud transcription;
-- OpenAI API integration;
-- other external STT APIs;
-- local web server;
-- backend;
-- database;
-- login/accounts;
-- Telegram bot;
-- automatic Telegram downloads;
-- microphone recording;
-- audio editing;
-- waveform editor;
-- embedded audio player;
-- speaker diarization;
-- automatic speaker recognition;
-- transcript summary;
-- semantic correction;
-- negotiation analysis;
-- client/project tags;
-- transcript library;
-- full-text search;
-- history database;
-- recursive folder crawling;
-- concurrent multi-file inference;
-- GPU requirement;
-- installer;
-- Windows Store/MSIX packaging;
-- auto-update;
-- system tray application;
-- cloud sync;
-- separate knowledge-management layer.
-
----
-
-## 40. Testing expectations
-
-Automated tests should focus on deterministic application logic rather than visual pixel testing.
-
-Useful test areas include:
-
-- supported-format filtering;
-- folder scanning;
-- duplicate queue prevention;
-- settings load/save;
-- artifact naming;
-- output path generation;
-- collision handling;
-- Markdown generation;
-- TXT generation;
-- queue state transitions;
-- source path handling;
-- Unicode/Cyrillic filenames;
-- mocked transcription boundary behavior;
-- error handling where practical.
-
-Do not create an unnecessarily complex GUI test framework only to increase test count.
-
-A real runtime smoke test remains necessary because the core value depends on actual local audio decoding and STT inference.
-
----
-
-## 41. Manual acceptance scenarios
-
-### Scenario A — Telegram voice
-
-Given:
-
-```text
-Telegram .ogg / Opus voice message
-```
-
-The user can:
-
-```text
-drop/select file
-→ transcribe locally
-→ preview transcript
-→ receive TXT + Markdown
-→ copy clean transcript
-```
-
-without converting audio manually.
-
-### Scenario B — batch
-
-Given several Telegram `.ogg` messages:
-
-```text
-Add Folder / Inbox
-→ queue
-→ sequential processing
-→ one artifact directory per source
-```
-
-A failure in one item does not invalidate completed items or prevent later items from processing.
-
-### Scenario C — mixed input
-
-The user can process common combinations such as:
-
-```text
-.ogg
-.mp3
-.m4a
-.wav
-```
-
-in one queue.
-
-### Scenario D — persistence
-
-After restarting the application, appropriate UI preferences such as model profile and output mode are restored.
-
-### Scenario E — Git safety
-
-After normal use:
-
-```text
-models\
-inbox\
-transcripts\
-.venv\
-local settings
-```
-
-must not appear as accidental Git changes containing private/generated data.
-
----
-
-## 42. Quality evaluation
-
-Initial acceptance must include real negotiation-like speech where possible.
-
-Evaluate transcription specifically for:
-
-- negations;
-- amounts;
-- names;
-- technical vocabulary;
-- English terms inside Russian speech;
-- long sentences;
-- hesitations and qualifications.
-
-Compare `Accuracy` and `Fast` on at least one identical recording.
-
-Record:
-
-- audio duration;
-- processing time;
-- obvious transcript errors;
-- subjective fidelity.
-
-Do not optimize model choice from theoretical benchmarks alone if real local recordings provide better evidence.
-
----
-
-## 43. Definition of Done
-
-The MVP is complete when all of the following are true.
-
-### Setup
-
-- application runs on Windows 11;
-- project uses repository-local `.venv`;
-- required model files are stored locally under `models`;
-- normal use requires no terminal interaction;
-- `run.bat` launches the application.
-
-### Input
-
-- real Telegram `.ogg` / Opus can be added and decoded;
-- `.mp3`, `.m4a`, `.wav` are supported;
-- drag & drop works;
-- Add Files works;
-- Add Folder works;
-- Inbox works;
-- duplicate source paths are handled safely.
-
-### Transcription
-
-- transcription occurs locally;
-- `Accuracy` uses large-v3;
-- `Fast` uses large-v3-turbo;
-- UI remains responsive;
-- batch processing is sequential;
-- processing states are understandable;
-- per-file failures are isolated;
-- Stop behavior is safe and understandable.
-
-### Output
-
-- every successful transcription generates `.txt`;
-- every successful transcription generates `.md`;
-- canonical dated output structure is used;
-- output collisions do not overwrite existing artifacts;
-- source audio remains untouched;
-- transcript preview works;
-- Copy works;
-- Open Folder works.
-
-### Fidelity
-
-- no automatic summary is produced;
-- no semantic rewriting layer is added;
-- clean transcript remains available as the primary artifact.
-
-### Privacy
-
-- no external transcription API is used;
-- normal inference works offline;
-- no telemetry is added;
-- source audio and transcripts remain local.
-
-### Repository hygiene
-
-- runtime artifact directories exist in repository structure;
-- their contents are ignored;
-- model files are ignored;
-- audio files are ignored;
-- transcript files are ignored;
-- `.venv` is ignored;
-- local settings are ignored;
-- automated tests pass;
-- repository is clean apart from intentional source/documentation changes.
-
----
-
-## 44. Product boundary after MVP
-
-Once the Definition of Done is satisfied, the application should be considered complete for its intended initial purpose.
-
-Do not continue adding functionality merely because it is easy to imagine.
-
-Further work must be driven by observed use.
-
-Possible later work, only if evidence justifies it:
-
-- performance tuning;
-- changing default model profile;
-- controlled benchmark against another Russian STT model such as GigaAM;
-- improved cancellation behavior;
-- minor UX corrections;
-- packaging if `run.bat + .venv` proves inconvenient.
-
-The default decision after successful acceptance is:
-
-> stop development and use the tool.
-
----
-
-## 45. Primary rule
-
-> Audio Transcript is a local transcription utility, not an AI analysis platform.
-
-Its responsibility begins with a local audio file and ends with a faithful, usable local transcript artifact.
+When a proposed feature does not clearly strengthen that result, defer it until actual usage provides evidence.
