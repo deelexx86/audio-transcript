@@ -177,6 +177,7 @@ def test_worker_receives_displayed_order(tmp_path, monkeypatch):
         item_completed = Signal(str, object)
         item_failed = Signal(str, str)
         finished = Signal(bool)
+        timing_changed = Signal(str, object)
 
         def __init__(self, items, profile, output_mode):
             super().__init__()
@@ -201,6 +202,151 @@ def test_worker_receives_displayed_order(tmp_path, monkeypatch):
         time.sleep(0.01)
     assert not window._processing
     assert captured == ["a.wav", "z.amr"]
+    window.close()
+
+
+def test_ui_timer_without_callbacks_stop_terminal_and_batch_reset(tmp_path, monkeypatch):
+    from PySide6.QtTest import QTest
+    from test_timing import Clock
+    from audio_transcript.timing import AttemptTiming
+    app = QApplication.instance() or QApplication([])
+    clock = Clock()
+    window = MainWindow(SettingsStore(tmp_path / "settings.json"), timing_clock=clock)
+    monkeypatch.setattr("audio_transcript.ui.probe_duration", lambda _: 120)
+    sources = [tmp_path / name for name in ("first.wav", "second.wav")]
+    for source in sources:
+        source.touch()
+    window._add_paths(sources)
+    first, second = window.queue.items
+    timing = AttemptTiming(clock=clock)
+    window._on_timing_changed(first.id, timing.snapshot())
+    window._on_state_changed(first.id, "Preparing", 0)
+    clock.advance(8)
+    QTest.qWait(600)
+    assert window.elapsed_value.text() == "00:08"
+    assert window.remaining_value.text() == "Unavailable"
+    assert window._timing_timer.isActive()
+    # Stop request must keep the actual phase and live clock until safe termination.
+    class StopWorker:
+        def request_stop(self):
+            pass
+    window._worker = StopWorker()
+    window._processing = True
+    window._stop_batch()
+    assert first.status == QueueStatus.PREPARING
+    assert window._timing_timer.isActive()
+    timing.finish("Cancelled")
+    window._on_timing_changed(first.id, timing.snapshot())
+    window._on_state_changed(first.id, "Cancelled", 0)
+    assert first.processing_seconds == 8
+    assert not window._timing_timer.isActive()
+    clock.advance(100)
+    window._refresh_timing()
+    assert window.elapsed_value.text() == "00:08"
+    fresh = AttemptTiming(clock=clock)
+    window._on_timing_changed(second.id, fresh.snapshot())
+    window._on_state_changed(second.id, "Downloading", -1)
+    assert window.elapsed_value.text() == "00:00"
+    assert "second.wav" in window.timing_file_label.toolTip()
+    fresh.finish("Error")
+    window._on_timing_changed(second.id, fresh.snapshot())
+    window._on_item_failed(second.id, "synthetic failure")
+    assert second.processing_seconds == 0
+    assert first.processing_seconds == 8
+    window._processing = False
+    window._worker = None
+    window.close()
+
+
+@pytest.mark.parametrize("code,elapsed,remaining,estimating,unavailable", [
+    ("en", "Elapsed", "Remaining", "Estimating…", "Unavailable"),
+    ("ru", "Прошло", "Осталось", "Оценивается…", "Недоступно"),
+    ("es", "Transcurrido", "Restante", "Estimando…", "No disponible"),
+    ("de", "Vergangen", "Verbleibend", "Wird geschätzt…", "Nicht verfügbar"),
+])
+def test_timing_localization_and_minimum_layout(code, elapsed, remaining, estimating, unavailable, tmp_path):
+    from test_timing import Clock, warmed
+    from audio_transcript.timing import AttemptTiming
+    app = QApplication.instance() or QApplication([])
+    clock, timing = warmed()
+    window = MainWindow(SettingsStore(tmp_path / "settings.json"), timing_clock=clock)
+    source = tmp_path / ("synthetic-recording-with-a-long-name-" * 4 + ".wav")
+    source.touch()
+    window._add_paths([source])
+    item = window.queue.items[0]
+    window._on_timing_changed(item.id, timing.snapshot())
+    window.language_combo.setCurrentIndex(window.language_combo.findData(code))
+    window.show()
+    window.resize(760, window.minimumHeight())
+    app.processEvents()
+    assert window.elapsed_label.text() == elapsed
+    assert window.remaining_label.text() == remaining
+    assert window.remaining_value.text().startswith("≈")
+    assert window._status_text(QueueStatus.TRANSCRIBING) in window.timing_file_label.text()
+    assert "2.0" in window.speed_value.text() or "2,0" in window.speed_value.text()
+    for widget in (window.elapsed_value, window.remaining_value, window.speed_value):
+        assert widget.width() >= widget.fontMetrics().horizontalAdvance(widget.text())
+        assert widget.mapTo(window.centralWidget(), widget.rect().bottomRight()).x() <= window.centralWidget().width()
+    fresh = AttemptTiming(clock=clock)
+    fresh.set_phase("Transcribing", duration=120)
+    window._on_timing_changed(item.id, fresh.snapshot())
+    assert window.remaining_value.text() == estimating
+    clock.advance(31)
+    window._refresh_timing()
+    assert window.remaining_value.text() == unavailable
+    fresh.finish("Done")
+    window._on_timing_changed(item.id, fresh.snapshot())
+    window.close()
+
+
+def test_retry_selected_resets_attempt_duration_and_keeps_other_results(tmp_path, monkeypatch):
+    from PySide6.QtCore import QObject, Signal
+    from PySide6.QtTest import QTest
+    from audio_transcript.timing import AttemptTiming
+    from test_timing import Clock
+    clock = Clock()
+    class RetryingWorker(QObject):
+        state_changed = Signal(str, str, int)
+        timing_changed = Signal(str, object)
+        item_completed = Signal(str, object)
+        item_failed = Signal(str, object)
+        finished = Signal(bool)
+        def __init__(self, items, profile, output_mode):
+            super().__init__()
+            self.items = items
+        def run(self):
+            item = self.items[0]
+            timing = AttemptTiming(clock=clock)
+            self.timing_changed.emit(item.id, timing.snapshot())
+            self.state_changed.emit(item.id, "Preparing", 0)
+            clock.advance(3)
+            timing.finish("Error")
+            self.timing_changed.emit(item.id, timing.snapshot())
+            self.item_failed.emit(item.id, "synthetic error")
+            self.finished.emit(False)
+    monkeypatch.setattr("audio_transcript.ui.BatchWorker", RetryingWorker)
+    monkeypatch.setattr("audio_transcript.ui.probe_duration", lambda _: 120)
+    app = QApplication.instance() or QApplication([])
+    window = MainWindow(SettingsStore(tmp_path / "settings.json"), timing_clock=clock)
+    for name in ("retry.wav", "done.wav"):
+        path = tmp_path / name
+        path.touch()
+        window._add_paths([path])
+    retry, done = window.queue.items
+    retry.status, retry.processing_seconds = QueueStatus.ERROR, 200
+    done.status, done.processing_seconds = QueueStatus.DONE, 400
+    window.table.selectRow(0)
+    window._retry_selected()
+    assert retry.processing_seconds is None
+    for _ in range(100):
+        QTest.qWait(10)
+        if not window._processing:
+            break
+    assert not window._processing
+    assert retry.processing_seconds == 3
+    assert done.processing_seconds == 400
+    assert window.elapsed_value.text() == "00:03"
+    assert not window._timing_timer.isActive()
     window.close()
 
 

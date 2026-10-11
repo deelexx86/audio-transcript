@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from faster_whisper import WhisperModel
+from faster_whisper.audio import decode_audio
 
 from audio_transcript.profiles import ModelProfile, require_local_model
 
@@ -38,14 +39,27 @@ class LocalTranscriber:
         duration: float | None,
         on_progress: Callable[[int], None],
         should_stop: Callable[[], bool],
+        on_timing: Callable[[str, float | None, float | None], None] | None = None,
     ) -> TranscriptionResult:
-        segments, info = self.model.transcribe(str(source))
-        actual_duration = duration or getattr(info, "duration", None)
+        # Match faster-whisper's normal decoding, but expose its boundary so
+        # media preparation is not counted as inference throughput.
+        if should_stop():
+            raise TranscriptionCancelled("Transcription was stopped.")
+        sampling_rate = self.model.feature_extractor.sampling_rate
+        audio = decode_audio(str(source), sampling_rate=sampling_rate)
+        actual_duration = audio.shape[0] / sampling_rate
+        if should_stop():
+            raise TranscriptionCancelled("Transcription was stopped.")
+        if on_timing:
+            on_timing("Transcribing", None, actual_duration)
+        segments, info = self.model.transcribe(audio)
         pieces: list[str] = []
         for segment in segments:
             if should_stop():
                 raise TranscriptionCancelled("Transcription was stopped.")
             pieces.append(segment.text)
+            if on_timing:
+                on_timing("Transcribing", float(segment.end), actual_duration)
             if actual_duration and actual_duration > 0:
                 on_progress(min(99, max(0, round((segment.end / actual_duration) * 100))))
         if should_stop():

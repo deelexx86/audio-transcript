@@ -164,6 +164,30 @@
         <translation>Interface language</translation>
     </message>
     <message>
+        <source>Elapsed</source>
+        <translation>Elapsed</translation>
+    </message>
+    <message>
+        <source>Remaining</source>
+        <translation>Remaining</translation>
+    </message>
+    <message>
+        <source>Speed</source>
+        <translation>Speed</translation>
+    </message>
+    <message>
+        <source>Current attempt, including preparation, downloads and saving.</source>
+        <translation>Current attempt, including preparation, downloads and saving.</translation>
+    </message>
+    <message>
+        <source>Approximate transcription time only; excludes preparation, downloads and saving.</source>
+        <translation>Approximate transcription time only; excludes preparation, downloads and saving.</translation>
+    </message>
+    <message>
+        <source>Media time processed per inference time; excludes model loading and decoding.</source>
+        <translation>Media time processed per inference time; excludes model loading and decoding.</translation>
+    </message>
+    <message>
         <source>Show settings · {model} · {output}</source>
         <translation>Show settings · {model} · {output}</translation>
     </message>
@@ -242,6 +266,38 @@
     <message>
         <source>Stop requested — the current safe inference boundary may take a moment.</source>
         <translation>Stop requested — the current safe inference boundary may take a moment.</translation>
+    </message>
+    <message>
+        <source>Current file: —</source>
+        <translation>Current file: —</translation>
+    </message>
+    <message>
+        <source>Current file: {name} · {phase}</source>
+        <translation>Current file: {name} · {phase}</translation>
+    </message>
+    <message>
+        <source>Media: {processed} / {duration}</source>
+        <translation>Media: {processed} / {duration}</translation>
+    </message>
+    <message>
+        <source>Estimating…</source>
+        <translation>Estimating…</translation>
+    </message>
+    <message>
+        <source>Unavailable</source>
+        <translation>Unavailable</translation>
+    </message>
+    <message>
+        <source>≈ &lt;1 min</source>
+        <translation>≈ &lt;1 min</translation>
+    </message>
+    <message>
+        <source>≈ {minutes} min</source>
+        <translation>≈ {minutes} min</translation>
+    </message>
+    <message>
+        <source>{speed}× realtime</source>
+        <translation>{speed}× realtime</translation>
     </message>
     <message>
         <source>Processing stopped; queued files were preserved.</source>

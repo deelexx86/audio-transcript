@@ -55,6 +55,12 @@ Solo cambia la interfaz. El idioma del audio se detecta automáticamente; el tex
 
 **Ocultar ajustes** libera espacio para la cola y la vista previa. El botón de apertura resume el modelo y el destino; la descripción completa aparece al pasar el cursor. El estado del panel se guarda localmente. Ordenar es una acción puntual: las nuevas entradas se añaden al final y los movimientos manuales sustituyen el orden previo. Las duraciones desconocidas van primero en orden ascendente. La cola y las fechas de incorporación no se restauran al reiniciar.
 
+## Tiempo de procesamiento, velocidad y tiempo restante
+
+Debajo de la vista previa, separados de los contadores del lote, aparecen el archivo actual, la fase, la posición procesada, **Transcurrido**, **Restante** y **Velocidad**. El reloj monotónico se actualiza cada medio segundo, incluso durante la carga del modelo, decodificación, descarga, espera de reintento y guardado. Stop mantiene el reloj hasta la parada segura. Done, Error y Cancelled conservan la duración medida; seleccionar una fila terminada muestra su tiempo. Retry Selected inicia mediciones nuevas. Las duraciones permanecen en el estado de resultados de la sesión; TXT y Markdown no cambian.
+
+La velocidad divide el tiempo de audio procesado por el tiempo real de inferencia, en **× tiempo real**; excluye carga del modelo, decodificación, descargas y guardado. Restante aproxima solo la transcripción, sin estimar el lote ni la descarga. Requiere al menos tres observaciones con avance separadas por un segundo, cinco segundos de inferencia y cinco segundos de contenido procesado. Los segmentos entregados juntos se agrupan, la velocidad se suaviza y el tiempo se redondea hacia arriba a minutos (pasos de cinco minutos a partir de diez minutos). Al principio aparece **Estimando…**; con duración desconocida, otras fases o progreso detenido aparece **No disponible**. Las estimaciones caducan tras 30–120 segundos según los intervalos observados; recuperarlas requiere observaciones nuevas. Estos criterios pueden impedir una estimación en grabaciones cortas o ventanas de inferencia lentas.
+
 ## Vídeos de YouTube
 
 **Añadir enlace** valida y añade un vídeo sin contactar con YouTube. **Transcribir** descarga el audio y utiliza el modelo Whisper local seleccionado. Los vídeos y archivos locales comparten la cola secuencial. Se muestran por separado los progresos de descarga y reconocimiento. Detener cancela en el siguiente punto seguro; una solicitud de red activa puede tardar hasta su límite de espera.

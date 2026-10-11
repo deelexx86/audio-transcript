@@ -56,6 +56,12 @@ Choose **Interface language** above the settings panel: English, Русский,
 
 Sorting is a one-time queue action. Newly added files append at the end, and manual moves override the previous sort. Unknown durations sort before known durations in ascending order. The queue and addition timestamps are session-only and are not restored after restarting.
 
+## Processing time, speed and remaining time
+
+Below the preview, the current-file area shows the phase, processed media position, **Elapsed**, **Remaining**, and **Speed**, separately from the batch counts. Elapsed uses a monotonic clock and refreshes every half second, including model loading, decoding, downloading, retry waits and saving. Stop keeps this clock running until a safe termination point. Done, Error and Cancelled retain the measured duration; selecting a finished row shows that attempt's timing. Retry Selected starts fresh measurements. Durations are kept in the session's per-item result state; TXT and Markdown output are unchanged.
+
+Speed is processed audio time divided by actual inference time, displayed as **× realtime**; model loading, decoding, downloads and saving are excluded. Remaining is a transcription-only approximation, not a batch or download ETA. It requires at least three advancing observations separated by a second, five seconds of inference and five seconds of media progress. Burst-delivered segments are coalesced, throughput is smoothed, and estimates are rounded up to minutes (five-minute steps above ten minutes). Early observations show **Estimating…**; unknown duration, non-transcription phases or stalled progress show **Unavailable**. Stale estimates expire after 30–120 seconds depending on observed intervals, and recovery requires fresh observations. These conservative thresholds may suppress ETA for short recordings or slow inference windows.
+
 ## YouTube videos
 
 **Add Link** validates and queues one video without contacting YouTube. **Transcribe** downloads the audio, then uses the selected local Whisper model. YouTube videos and local files share the same sequential queue. Download progress is shown separately from transcription progress; Stop requests cancellation at the next safe download/inference boundary (an in-flight network request may take up to its timeout).

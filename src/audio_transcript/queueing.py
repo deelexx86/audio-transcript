@@ -44,6 +44,7 @@ class QueueItem:
     added_at: datetime = field(default_factory=lambda: datetime.now().astimezone())
     source_url: str | None = None
     title: str = ""
+    processing_seconds: float | None = None
 
     @property
     def display_name(self) -> str:

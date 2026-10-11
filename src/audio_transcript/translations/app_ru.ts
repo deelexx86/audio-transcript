@@ -164,6 +164,30 @@
         <translation>Язык интерфейса</translation>
     </message>
     <message>
+        <source>Elapsed</source>
+        <translation>Прошло</translation>
+    </message>
+    <message>
+        <source>Remaining</source>
+        <translation>Осталось</translation>
+    </message>
+    <message>
+        <source>Speed</source>
+        <translation>Скорость</translation>
+    </message>
+    <message>
+        <source>Current attempt, including preparation, downloads and saving.</source>
+        <translation>Текущая попытка, включая подготовку, загрузку и сохранение.</translation>
+    </message>
+    <message>
+        <source>Approximate transcription time only; excludes preparation, downloads and saving.</source>
+        <translation>Примерное время только расшифровки; без подготовки, загрузки и сохранения.</translation>
+    </message>
+    <message>
+        <source>Media time processed per inference time; excludes model loading and decoding.</source>
+        <translation>Длительность обработанной записи на время распознавания; без загрузки модели и декодирования.</translation>
+    </message>
+    <message>
         <source>Show settings · {model} · {output}</source>
         <translation>Настройки · {model} · {output}</translation>
     </message>
@@ -246,6 +270,38 @@
     <message>
         <source>Stop requested — the current safe inference boundary may take a moment.</source>
         <translation>Запрошена остановка — дождитесь безопасного завершения текущего этапа.</translation>
+    </message>
+    <message>
+        <source>Current file: —</source>
+        <translation>Текущий файл: —</translation>
+    </message>
+    <message>
+        <source>Current file: {name} · {phase}</source>
+        <translation>Текущий файл: {name} · {phase}</translation>
+    </message>
+    <message>
+        <source>Media: {processed} / {duration}</source>
+        <translation>Запись: {processed} / {duration}</translation>
+    </message>
+    <message>
+        <source>Estimating…</source>
+        <translation>Оценивается…</translation>
+    </message>
+    <message>
+        <source>Unavailable</source>
+        <translation>Недоступно</translation>
+    </message>
+    <message>
+        <source>≈ &lt;1 min</source>
+        <translation>≈ &lt;1 мин</translation>
+    </message>
+    <message>
+        <source>≈ {minutes} min</source>
+        <translation>≈ {minutes} мин</translation>
+    </message>
+    <message>
+        <source>{speed}× realtime</source>
+        <translation>{speed}× реального времени</translation>
     </message>
     <message>
         <source>Processing stopped; queued files were preserved.</source>

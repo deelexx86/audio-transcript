@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from collections.abc import Callable
+from math import ceil
 from time import monotonic
 
-from PySide6.QtCore import QEvent, QItemSelectionModel, QThread, QTimer, Qt, QUrl
+from PySide6.QtCore import QEvent, QItemSelectionModel, QLocale, QThread, QTimer, Qt, QUrl
 from PySide6.QtGui import QCloseEvent, QDesktopServices, QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import (
     QApplication,
@@ -36,10 +38,11 @@ from audio_transcript.profiles import PROFILES, PROFILES_BY_KEY
 from audio_transcript.queueing import ACTIVE_STATUSES, AddResult, QueueItem, QueueManager, QueueStatus
 from audio_transcript.settings import AppSettings, SettingsStore
 from audio_transcript.worker import BatchWorker, WorkItem
+from audio_transcript.timing import TimingSnapshot
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, settings_store: SettingsStore | None = None) -> None:
+    def __init__(self, settings_store: SettingsStore | None = None, *, timing_clock: Callable[[], float] = monotonic) -> None:
         super().__init__()
         ensure_runtime_directories()
         self.settings_store = settings_store or SettingsStore()
@@ -58,6 +61,12 @@ class MainWindow(QMainWindow):
         self._batch_stopped = False
         self._thread: QThread | None = None
         self._worker: BatchWorker | None = None
+        self._timing_clock = timing_clock
+        self._timings: dict[str, TimingSnapshot] = {}
+        self._timing_id: str | None = None
+        self._timing_timer = QTimer(self)
+        self._timing_timer.setInterval(500)
+        self._timing_timer.timeout.connect(self._refresh_timing)
         self._build_ui()
         self.setMinimumHeight(max(560, self.minimumSizeHint().height()))
         self._restore_settings()
@@ -72,8 +81,9 @@ class MainWindow(QMainWindow):
 
         central = QWidget(self)
         outer = QVBoxLayout(central)
-        outer.setContentsMargins(22, 18, 22, 18)
-        outer.setSpacing(14)
+        outer.setContentsMargins(22, 14, 22, 14)
+        # Keep the added timing rows compact at ordinary Windows window sizes.
+        outer.setSpacing(6)
 
         header = QHBoxLayout()
         title_block = QVBoxLayout()
@@ -230,6 +240,30 @@ class MainWindow(QMainWindow):
         self.splitter.setStretchFactor(1, 2)
         outer.addWidget(self.splitter, 1)
 
+        timing_layout = QVBoxLayout()
+        timing_layout.setSpacing(2)
+        timing_header = QHBoxLayout()
+        self.timing_file_label = QLabel()
+        self.timing_file_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.media_label = QLabel()
+        timing_header.addWidget(self.timing_file_label, 1)
+        timing_header.addWidget(self.media_label)
+        timing_layout.addLayout(timing_header)
+        metrics = QHBoxLayout()
+        self.elapsed_label, self.elapsed_value = QLabel(), QLabel("—")
+        self.remaining_label, self.remaining_value = QLabel(), QLabel("—")
+        self.speed_label, self.speed_value = QLabel(), QLabel("—")
+        for label, value in ((self.elapsed_label, self.elapsed_value),
+                             (self.remaining_label, self.remaining_value),
+                             (self.speed_label, self.speed_value)):
+            column = QVBoxLayout()
+            column.setSpacing(0)
+            column.addWidget(label)
+            column.addWidget(value, 1)
+            metrics.addLayout(column, 1)
+        timing_layout.addLayout(metrics)
+        outer.addLayout(timing_layout)
+
         footer = QHBoxLayout()
         self.summary_label = QLabel("Queue is empty")
         self.summary_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
@@ -319,6 +353,13 @@ class MainWindow(QMainWindow):
 
     def _retranslate_ui(self) -> None:
         self.language_label.setText(self.tr("Interface language"))
+        self.elapsed_label.setText(self.tr("Elapsed"))
+        self.remaining_label.setText(self.tr("Remaining"))
+        self.speed_label.setText(self.tr("Speed"))
+        self.elapsed_label.setToolTip(self.tr("Current attempt, including preparation, downloads and saving."))
+        self.remaining_label.setToolTip(self.tr("Approximate transcription time only; excludes preparation, downloads and saving."))
+        self.speed_label.setToolTip(self.tr("Media time processed per inference time; excludes model loading and decoding."))
+        self._refresh_timing()
         self.subtitle.setText(self.tr('Faithful transcripts from local audio and video'))
         self.badge.setText(self.tr('LOCAL TRANSCRIPTION'))
         self.add_youtube_button.setText(self.tr('Add Link'))
@@ -390,6 +431,7 @@ class MainWindow(QMainWindow):
         super().resizeEvent(event)
         if hasattr(self, "_summary_text"):
             self._fit_summary()
+            self._refresh_timing()
 
     def _fit_summary(self) -> None:
         self.summary_label.setText(self.summary_label.fontMetrics().elidedText(
@@ -612,6 +654,8 @@ class MainWindow(QMainWindow):
         if not selected:
             return
         self.queue.remove_ids(selected)
+        for item_id in selected:
+            self._timings.pop(item_id, None)
         for row in range(self.table.rowCount() - 1, -1, -1):
             cell = self.table.item(row, 0)
             if cell and str(cell.data(Qt.ItemDataRole.UserRole)) in selected:
@@ -625,6 +669,8 @@ class MainWindow(QMainWindow):
             return
         self._reset_sort_indicator()
         self.queue.clear()
+        self._timings.clear()
+        self._timing_id = None
         self.table.setRowCount(0)
         self._row_by_id.clear()
         self.preview.clear()
@@ -666,6 +712,8 @@ class MainWindow(QMainWindow):
             item.error = ""
             item.transcript = ""
             item.output_directory = None
+            item.processing_seconds = None
+            self._timings.pop(item.id, None)
             self._refresh_row(item)
         work = [WorkItem(item.id, item.source, item.speaker, item.duration, item.source_url) for item in retryable]
         self._thread = QThread(self)
@@ -673,6 +721,7 @@ class MainWindow(QMainWindow):
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
         self._worker.state_changed.connect(self._on_state_changed)
+        self._worker.timing_changed.connect(self._on_timing_changed)
         self._worker.item_completed.connect(self._on_item_completed)
         self._worker.item_failed.connect(self._on_item_failed)
         self._worker.finished.connect(self._on_worker_finished)
@@ -706,6 +755,58 @@ class MainWindow(QMainWindow):
             self._show_selected()
         self._update_actions()
 
+    def _on_timing_changed(self, item_id: str, snapshot: TimingSnapshot) -> None:
+        item = self.queue.get(item_id)
+        if item is None:
+            return
+        self._timings[item_id] = snapshot
+        self._timing_id = item_id
+        if snapshot.finished_at is None:
+            self._timing_timer.start()
+        else:
+            self._timing_timer.stop()
+            item.processing_seconds = snapshot.view(self._timing_clock()).elapsed
+        self._refresh_timing()
+
+    def _refresh_timing(self) -> None:
+        item = self.queue.get(self._timing_id) if self._timing_id else None
+        snapshot = self._timings.get(self._timing_id) if item else None
+        if snapshot is None:
+            self.timing_file_label.setText(self.tr("Current file: —"))
+            self.timing_file_label.setToolTip("")
+            self.media_label.setText("")
+            for label in (self.elapsed_value, self.remaining_value, self.speed_value):
+                label.setText("—")
+            return
+        view = snapshot.view(self._timing_clock())
+        template = self.tr("Current file: {name} · {phase}")
+        phase = self._status_text(QueueStatus(snapshot.phase))
+        description = template.format(name=item.display_name, phase=phase)
+        metrics = self.timing_file_label.fontMetrics()
+        name_width = max(0, self.timing_file_label.width() - metrics.horizontalAdvance(
+            template.format(name="", phase=phase)))
+        name = metrics.elidedText(item.display_name, Qt.TextElideMode.ElideRight, name_width)
+        self.timing_file_label.setText(template.format(name=name, phase=phase))
+        self.timing_file_label.setToolTip(description)
+        self.elapsed_value.setText(format_duration(int(view.elapsed)))
+        self.media_label.setText(self.tr("Media: {processed} / {duration}").format(
+            processed=format_duration(snapshot.processed), duration=format_duration(snapshot.duration)))
+        if view.remaining is None:
+            self.remaining_value.setText(self.tr("Estimating…") if view.eta_state == "estimating" else self.tr("Unavailable"))
+        elif view.remaining < 60:
+            self.remaining_value.setText(self.tr("≈ <1 min"))
+        else:
+            step = 5 if view.remaining >= 600 else 1
+            minutes = ceil(view.remaining / (60 * step)) * step
+            self.remaining_value.setText(self.tr("≈ {minutes} min").format(minutes=minutes))
+        if view.speed is None:
+            self.speed_value.setText(self.tr("Unavailable"))
+        else:
+            locale = QLocale(self.languages.language)
+            speed = ("<" + locale.toString(0.1, "f", 1) if view.speed < 0.05
+                     else locale.toString(view.speed, "f", 1))
+            self.speed_value.setText(self.tr("{speed}× realtime").format(speed=speed))
+
     def _on_item_completed(self, item_id: str, payload: dict[str, object]) -> None:
         item = self.queue.get(item_id)
         if not item:
@@ -718,6 +819,8 @@ class MainWindow(QMainWindow):
         item.duration = float(payload["duration"]) if payload["duration"] is not None else item.duration
         item.model_name = str(payload["model_name"])
         item.output_directory = Path(payload["output_directory"])
+        if "processing_seconds" in payload:
+            item.processing_seconds = float(payload["processing_seconds"])
         self._refresh_row(item)
         if self._selected_item() is item:
             self._show_selected()
@@ -789,6 +892,8 @@ class MainWindow(QMainWindow):
 
     def _show_selected(self) -> None:
         item = self._selected_item()
+        if not self._processing:
+            self._timing_id = item.id if item and item.id in self._timings else None
         if not item:
             self.preview_title.setText(self.tr("Transcript preview"))
             self.preview.clear()
@@ -898,6 +1003,7 @@ class MainWindow(QMainWindow):
         active = next((item for item in self.queue.items if item.status in ACTIVE_STATUSES), None)
         self.progress_bar.setRange(0, 0 if active and active.progress < 0 else 100)
         self.progress_bar.setValue(active.progress if active else (100 if has_items and not retryable else 0))
+        self._refresh_timing()
 
     def closeEvent(self, event: QCloseEvent) -> None:
         if self._processing:

@@ -164,6 +164,30 @@
         <translation>Idioma de la interfaz</translation>
     </message>
     <message>
+        <source>Elapsed</source>
+        <translation>Transcurrido</translation>
+    </message>
+    <message>
+        <source>Remaining</source>
+        <translation>Restante</translation>
+    </message>
+    <message>
+        <source>Speed</source>
+        <translation>Velocidad</translation>
+    </message>
+    <message>
+        <source>Current attempt, including preparation, downloads and saving.</source>
+        <translation>Intento actual, incluida la preparación, las descargas y el guardado.</translation>
+    </message>
+    <message>
+        <source>Approximate transcription time only; excludes preparation, downloads and saving.</source>
+        <translation>Tiempo aproximado solo de transcripción; excluye preparación, descargas y guardado.</translation>
+    </message>
+    <message>
+        <source>Media time processed per inference time; excludes model loading and decoding.</source>
+        <translation>Duración del contenido procesado por tiempo de inferencia; excluye carga del modelo y decodificación.</translation>
+    </message>
+    <message>
         <source>Show settings · {model} · {output}</source>
         <translation>Ajustes · {model} · {output}</translation>
     </message>
@@ -242,6 +266,38 @@
     <message>
         <source>Stop requested — the current safe inference boundary may take a moment.</source>
         <translation>Se solicitó detener el proceso; espere al siguiente punto seguro de cancelación.</translation>
+    </message>
+    <message>
+        <source>Current file: —</source>
+        <translation>Archivo actual: —</translation>
+    </message>
+    <message>
+        <source>Current file: {name} · {phase}</source>
+        <translation>Archivo actual: {name} · {phase}</translation>
+    </message>
+    <message>
+        <source>Media: {processed} / {duration}</source>
+        <translation>Contenido: {processed} / {duration}</translation>
+    </message>
+    <message>
+        <source>Estimating…</source>
+        <translation>Estimando…</translation>
+    </message>
+    <message>
+        <source>Unavailable</source>
+        <translation>No disponible</translation>
+    </message>
+    <message>
+        <source>≈ &lt;1 min</source>
+        <translation>≈ &lt;1 min</translation>
+    </message>
+    <message>
+        <source>≈ {minutes} min</source>
+        <translation>≈ {minutes} min</translation>
+    </message>
+    <message>
+        <source>{speed}× realtime</source>
+        <translation>{speed}× tiempo real</translation>
     </message>
     <message>
         <source>Processing stopped; queued files were preserved.</source>
