@@ -301,7 +301,7 @@ def test_timing_localization_and_minimum_layout(code, elapsed, remaining, estima
 
 def test_retry_selected_resets_attempt_duration_and_keeps_other_results(tmp_path, monkeypatch):
     from PySide6.QtCore import QObject, Signal
-    from PySide6.QtTest import QTest
+    import time
     from audio_transcript.timing import AttemptTiming
     from test_timing import Clock
     clock = Clock()
@@ -338,10 +338,12 @@ def test_retry_selected_resets_attempt_duration_and_keeps_other_results(tmp_path
     window.table.selectRow(0)
     window._retry_selected()
     assert retry.processing_seconds is None
-    for _ in range(100):
-        QTest.qWait(10)
-        if not window._processing:
-            break
+    # Yield Python execution as well as Qt events to the worker, matching the
+    # existing threaded tests. QTest.qWait can stall PySide worker teardown.
+    deadline = time.monotonic() + 5
+    while window._processing and time.monotonic() < deadline:
+        app.processEvents()
+        time.sleep(0.01)
     assert not window._processing
     assert retry.processing_seconds == 3
     assert done.processing_seconds == 400
