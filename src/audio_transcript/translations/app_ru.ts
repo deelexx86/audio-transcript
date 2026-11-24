@@ -8,10 +8,6 @@
         <translation>Точная расшифровка локальных аудио и видео</translation>
     </message>
     <message>
-        <source>LOCAL TRANSCRIPTION</source>
-        <translation>ЛОКАЛЬНАЯ РАСШИФРОВКА</translation>
-    </message>
-    <message>
         <source>Add Link</source>
         <translation>Добавить ссылку</translation>
     </message>
@@ -82,10 +78,6 @@
     <message>
         <source>Paste a video link</source>
         <translation>Вставьте ссылку на видео</translation>
-    </message>
-    <message>
-        <source>Downloads audio when Transcribe starts; speech recognition stays local.</source>
-        <translation>Звук скачивается при запуске расшифровки; распознавание речи выполняется локально.</translation>
     </message>
     <message>
         <source>Retry only selected Error or Cancelled items.</source>
@@ -188,6 +180,50 @@
         <translation>Длительность обработанной записи на время распознавания; без загрузки модели и декодирования.</translation>
     </message>
     <message>
+        <source>Acceleration…</source>
+        <translation>Ускорение…</translation>
+    </message>
+    <message>
+        <source>Downloads audio when Transcribe starts, then uses the selected execution mode.</source>
+        <translation>При запуске расшифровки скачивает аудио и обрабатывает его в выбранном режиме.</translation>
+    </message>
+    <message>
+        <source>Local CPU</source>
+        <translation>Локальный ЦП</translation>
+    </message>
+    <message>
+        <source>Local NVIDIA GPU</source>
+        <translation>Локальный GPU NVIDIA</translation>
+    </message>
+    <message>
+        <source>Remote NVIDIA GPU</source>
+        <translation>Удалённый GPU NVIDIA</translation>
+    </message>
+    <message>
+        <source>Acceleration</source>
+        <translation>Ускорение</translation>
+    </message>
+    <message>
+        <source>Execution mode</source>
+        <translation>Режим выполнения</translation>
+    </message>
+    <message>
+        <source>SSH host alias</source>
+        <translation>Псевдоним SSH-хоста</translation>
+    </message>
+    <message>
+        <source>Remote mode sends source media over SSH to the selected host. Transcript files are saved on this computer.</source>
+        <translation>В удалённом режиме исходные медиафайлы передаются по SSH на выбранный компьютер. Файлы расшифровки сохраняются на этом компьютере.</translation>
+    </message>
+    <message>
+        <source>Save</source>
+        <translation>Сохранить</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Отмена</translation>
+    </message>
+    <message>
         <source>Show settings · {model} · {output}</source>
         <translation>Настройки · {model} · {output}</translation>
     </message>
@@ -202,10 +238,6 @@
     <message>
         <source>This YouTube video is already in the queue.</source>
         <translation>Это видео YouTube уже в очереди.</translation>
-    </message>
-    <message>
-        <source>Video queued. Transcribe downloads audio, then transcribes locally.</source>
-        <translation>Видео добавлено. При расшифровке звук скачивается и распознаётся локально.</translation>
     </message>
     <message>
         <source>Could not save settings: {error}</source>
@@ -264,8 +296,16 @@
         <translation>Просмотр расшифровки</translation>
     </message>
     <message>
-        <source>Using local model: {model}</source>
-        <translation>Локальная модель: {model}</translation>
+        <source>Video queued. Transcribe downloads audio before speech recognition.</source>
+        <translation>Видео добавлено в очередь. Перед распознаванием аудио будет скачано.</translation>
+    </message>
+    <message>
+        <source>Set a valid SSH host alias in Acceleration settings.</source>
+        <translation>Укажите допустимый псевдоним SSH-хоста в настройках ускорения.</translation>
+    </message>
+    <message>
+        <source>Using {mode} · {model}</source>
+        <translation>Обработка в режиме «{mode}» · {model}</translation>
     </message>
     <message>
         <source>Stop requested — the current safe inference boundary may take a moment.</source>
@@ -324,6 +364,10 @@
         <translation>Скачивание</translation>
     </message>
     <message>
+        <source>Uploading over SSH</source>
+        <translation>Передача по SSH</translation>
+    </message>
+    <message>
         <source>Waiting to retry</source>
         <translation>Ожидание повтора</translation>
     </message>
@@ -372,6 +416,26 @@ Status: {status}</source>
     <message>
         <source>The selected model is not installed. Run bootstrap_models.bat while online, then try again.</source>
         <translation>Выбранная модель не установлена. Запустите bootstrap_models.bat с доступом к интернету и повторите попытку.</translation>
+    </message>
+    <message>
+        <source>Local GPU processing failed. Check the audio, NVIDIA driver and CUDA setup in README.</source>
+        <translation>Сбой обработки на локальном GPU. Проверьте аудио, драйвер NVIDIA и настройку CUDA по README.</translation>
+    </message>
+    <message>
+        <source>GPU processing failed on the SSH host. Check the audio and the host&apos;s CUDA setup.</source>
+        <translation>Сбой обработки на GPU хоста SSH. Проверьте аудио и настройку CUDA на хосте.</translation>
+    </message>
+    <message>
+        <source>The remote job failed. Check the SSH alias, host key, connection and worker setup.</source>
+        <translation>Сбой удалённой обработки. Проверьте псевдоним SSH, ключ хоста, подключение и настройку обработчика.</translation>
+    </message>
+    <message>
+        <source>The selected model is missing on the SSH host. Rerun the remote GPU setup.</source>
+        <translation>Выбранная модель отсутствует на SSH-хосте. Повторите настройку удалённого GPU.</translation>
+    </message>
+    <message>
+        <source>The SSH host could not decode this file. Check that it contains a readable audio track.</source>
+        <translation>SSH-хост не смог декодировать файл. Проверьте, что файл содержит читаемую звуковую дорожку.</translation>
     </message>
     <message>
         <source>YouTube requested an anti-bot check. The automatic retry failed. Try Retry Selected later; browser playback may still work.</source>

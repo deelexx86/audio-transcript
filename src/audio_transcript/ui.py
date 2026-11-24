@@ -10,6 +10,8 @@ from PySide6.QtGui import QCloseEvent, QDesktopServices, QDragEnterEvent, QDropE
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QFileDialog,
     QFormLayout,
     QFrame,
@@ -30,6 +32,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from audio_transcript.acceleration import ExecutionMode, valid_ssh_alias
 from audio_transcript.audio import SUPPORTED_EXTENSIONS, format_duration, probe_duration, scan_folder
 from audio_transcript.errors import ProcessingFailure
 from audio_transcript.i18n import LANGUAGES, language_manager
@@ -93,7 +96,7 @@ class MainWindow(QMainWindow):
         self.subtitle.setObjectName("subtitle")
         title_block.addWidget(title)
         title_block.addWidget(self.subtitle)
-        self.badge = QLabel("LOCAL TRANSCRIPTION")
+        self.badge = QLabel()
         self.badge.setObjectName("badge")
         self.badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         header.addLayout(title_block)
@@ -109,6 +112,9 @@ class MainWindow(QMainWindow):
         self.settings_toggle.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.settings_toggle.setMinimumWidth(150)
         preferences.addWidget(self.settings_toggle, 1)
+        self.settings_button = QPushButton()
+        self.settings_button.clicked.connect(self._open_execution_settings)
+        preferences.addWidget(self.settings_button)
         preferences.addSpacing(18)
         self.language_label = QLabel()
         preferences.addWidget(self.language_label)
@@ -145,7 +151,6 @@ class MainWindow(QMainWindow):
         youtube_layout.addWidget(QLabel("YouTube"))
         self.youtube_edit = QLineEdit()
         self.youtube_edit.setPlaceholderText("Paste a video link")
-        self.youtube_edit.setToolTip("Downloads audio when Transcribe starts; speech recognition stays local.")
         self.add_youtube_button = QPushButton("Add Link")
         youtube_layout.addWidget(self.youtube_edit, 1)
         youtube_layout.addWidget(self.add_youtube_button)
@@ -361,7 +366,8 @@ class MainWindow(QMainWindow):
         self.speed_label.setToolTip(self.tr("Media time processed per inference time; excludes model loading and decoding."))
         self._refresh_timing()
         self.subtitle.setText(self.tr('Faithful transcripts from local audio and video'))
-        self.badge.setText(self.tr('LOCAL TRANSCRIPTION'))
+        self._refresh_execution_mode()
+        self.settings_button.setText(self.tr("Acceleration…"))
         self.add_youtube_button.setText(self.tr('Add Link'))
         self.youtube_hint.setText(self.tr('YouTube needs internet. Results save to Workspace / transcripts.'))
         self.add_files_button.setText(self.tr('+ Files'))
@@ -380,7 +386,7 @@ class MainWindow(QMainWindow):
         self.transcribe_button.setText(self.tr('Transcribe'))
         self.speaker_edit.setPlaceholderText(self.tr('Optional default for newly added files'))
         self.youtube_edit.setPlaceholderText(self.tr('Paste a video link'))
-        self.youtube_edit.setToolTip(self.tr('Downloads audio when Transcribe starts; speech recognition stays local.'))
+        self.youtube_edit.setToolTip(self.tr("Downloads audio when Transcribe starts, then uses the selected execution mode."))
         self.retry_selected_button.setToolTip(self.tr('Retry only selected Error or Cancelled items.'))
         self.remove_completed_button.setToolTip(self.tr('Remove Done rows; keep audio and transcript files.'))
         self.table.horizontalHeader().setToolTip(self.tr('Click a column header to sort; click again to reverse.'))
@@ -407,12 +413,68 @@ class MainWindow(QMainWindow):
         self._show_selected()
         if self._status_message and self.statusBar().currentMessage():
             source, n, values = self._status_message
-            if source == "Using local model: {model}":
-                values = {"model": self.model_combo.currentText()}
+            if source == "Using {mode} · {model}":
+                values = {"mode": self._mode_label(self.settings.execution_mode), "model": self.model_combo.currentText()}
             timeout = max(1, int((self._status_deadline - monotonic()) * 1000)) if self._status_deadline else 0
             message = self._addition_message(values["result"]) if source is None else self.tr(source, None, n).format(**values)
             self.statusBar().showMessage(message, timeout)
         self.centralWidget().layout().activate()
+
+    def _mode_label(self, mode: str) -> str:
+        return {
+            ExecutionMode.CPU: self.tr("Local CPU"),
+            ExecutionMode.LOCAL_CUDA: self.tr("Local NVIDIA GPU"),
+            ExecutionMode.REMOTE_CUDA: self.tr("Remote NVIDIA GPU"),
+        }[mode]
+
+    def _refresh_execution_mode(self) -> None:
+        mode = self.settings.execution_mode
+        self.badge.setText(self._mode_label(mode))
+        self.badge.setToolTip(self.settings.ssh_alias if mode == ExecutionMode.REMOTE_CUDA else "")
+
+    def _open_execution_settings(self) -> None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle(self.tr("Acceleration"))
+        dialog.setMinimumWidth(420)
+        layout = QFormLayout(dialog)
+        mode = QComboBox()
+        for option in ExecutionMode:
+            mode.addItem(self._mode_label(option), option.value)
+        mode.setCurrentIndex(mode.findData(self.settings.execution_mode))
+        layout.addRow(self.tr("Execution mode"), mode)
+        alias = QLineEdit(self.settings.ssh_alias)
+        alias.setMaxLength(253)
+        layout.addRow(self.tr("SSH host alias"), alias)
+        notice = QLabel(self.tr(
+            "Remote mode sends source media over SSH to the selected host. "
+            "Transcript files are saved on this computer."
+        ))
+        notice.setWordWrap(True)
+        layout.addRow(notice)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        ok = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        ok.setText(self.tr("Save"))
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText(self.tr("Cancel"))
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addRow(buttons)
+
+        def refresh() -> None:
+            remote = mode.currentData() == ExecutionMode.REMOTE_CUDA
+            alias.setEnabled(remote)
+            notice.setVisible(remote)
+            ok.setEnabled(not remote or valid_ssh_alias(alias.text().strip()))
+
+        mode.currentIndexChanged.connect(refresh)
+        alias.textChanged.connect(refresh)
+        refresh()
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.settings.execution_mode = mode.currentData()
+            if valid_ssh_alias(alias.text().strip()):
+                self.settings.ssh_alias = alias.text().strip()
+            self._refresh_execution_mode()
+            self._save_settings()
+        dialog.deleteLater()
 
     def _toggle_settings(self, expanded: bool) -> None:
         self.settings_panel.setVisible(expanded)
@@ -454,7 +516,7 @@ class MainWindow(QMainWindow):
         self._append_row(item)
         self.youtube_edit.clear()
         self.table.selectRow(self._row_by_id[item.id])
-        self._status("Video queued. Transcribe downloads audio, then transcribes locally.", 6000)
+        self._status("Video queued. Transcribe downloads audio before speech recognition.", 6000)
         self._update_actions()
 
     def _restore_settings(self) -> None:
@@ -479,6 +541,8 @@ class MainWindow(QMainWindow):
             splitter_sizes=self.splitter.sizes(),
             settings_expanded=self.settings_toggle.isChecked(),
             interface_language=self.languages.language,
+            execution_mode=self.settings.execution_mode,
+            ssh_alias=self.settings.ssh_alias,
         )
         try:
             self.settings_store.save(current)
@@ -702,6 +766,10 @@ class MainWindow(QMainWindow):
     def _run_items(self, retryable: list[QueueItem]) -> None:
         if self._processing or not retryable:
             return
+        mode = ExecutionMode(self.settings.execution_mode)
+        if mode == ExecutionMode.REMOTE_CUDA and not valid_ssh_alias(self.settings.ssh_alias):
+            self._status("Set a valid SSH host alias in Acceleration settings.", 10000)
+            return
         profile = PROFILES_BY_KEY[str(self.model_combo.currentData())]
         output_mode = str(self.output_combo.currentData())
         self._processing = True
@@ -717,7 +785,7 @@ class MainWindow(QMainWindow):
             self._refresh_row(item)
         work = [WorkItem(item.id, item.source, item.speaker, item.duration, item.source_url) for item in retryable]
         self._thread = QThread(self)
-        self._worker = BatchWorker(work, profile, output_mode)
+        self._worker = BatchWorker(work, profile, output_mode, mode=mode, ssh_alias=self.settings.ssh_alias)
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
         self._worker.state_changed.connect(self._on_state_changed)
@@ -732,7 +800,7 @@ class MainWindow(QMainWindow):
         self._batch_stopped = False
         self._show_selected()
         self._update_actions()
-        self._status("Using local model: {model}", model=self.model_combo.currentText())
+        self._status("Using {mode} · {model}", mode=self._mode_label(mode), model=self.model_combo.currentText())
         self._thread.start()
 
     def _stop_batch(self) -> None:
@@ -860,6 +928,7 @@ class MainWindow(QMainWindow):
             QueueStatus.QUEUED: self.tr("Queued"),
             QueueStatus.PREPARING: self.tr("Preparing"),
             QueueStatus.DOWNLOADING: self.tr("Downloading"),
+            QueueStatus.UPLOADING: self.tr("Uploading over SSH"),
             QueueStatus.RETRYING: self.tr("Waiting to retry"),
             QueueStatus.TRANSCRIBING: self.tr("Transcribing"),
             QueueStatus.SAVING: self.tr("Saving"),
@@ -917,6 +986,11 @@ class MainWindow(QMainWindow):
         explanations = {
             "transcription": self.tr("Transcription failed. Check that the file contains a readable audio track and that the local model is installed."),
             "model_missing": self.tr("The selected model is not installed. Run bootstrap_models.bat while online, then try again."),
+            "local_cuda": self.tr("Local GPU processing failed. Check the audio, NVIDIA driver and CUDA setup in README."),
+            "remote_cuda": self.tr("GPU processing failed on the SSH host. Check the audio and the host's CUDA setup."),
+            "remote_connection": self.tr("The remote job failed. Check the SSH alias, host key, connection and worker setup."),
+            "remote_model_missing": self.tr("The selected model is missing on the SSH host. Rerun the remote GPU setup."),
+            "remote_media": self.tr("The SSH host could not decode this file. Check that it contains a readable audio track."),
             "bot_check": self.tr("YouTube requested an anti-bot check. The automatic retry failed. Try Retry Selected later; browser playback may still work."),
             "access_restricted": self.tr("YouTube requires access permissions. This app does not use accounts or browser cookies."),
             "unavailable": self.tr("This YouTube video is unavailable or restricted in your location."),
@@ -954,6 +1028,7 @@ class MainWindow(QMainWindow):
             self.model_combo,
             self.speaker_edit,
             self.output_combo,
+            self.settings_button,
             self.youtube_edit,
             self.add_youtube_button,
         ):

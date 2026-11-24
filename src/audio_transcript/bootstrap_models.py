@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 from faster_whisper.utils import download_model
 
@@ -8,18 +9,20 @@ from audio_transcript.paths import MODELS_DIR, ensure_runtime_directories
 from audio_transcript.profiles import PROFILES, PROFILES_BY_KEY, model_is_ready
 
 
-def bootstrap(profile_keys: list[str] | None = None) -> int:
-    ensure_runtime_directories()
+def bootstrap(profile_keys: list[str] | None = None, *, models_dir: Path | None = None) -> int:
+    if models_dir is None:
+        ensure_runtime_directories()
     selected = PROFILES if not profile_keys else tuple(PROFILES_BY_KEY[key] for key in profile_keys)
     for profile in selected:
-        if model_is_ready(profile):
-            print(f"Ready: {profile.display_name}\n  {profile.path}")
+        path = models_dir / profile.directory_name if models_dir is not None else profile.path
+        if model_is_ready(profile, models_dir=models_dir):
+            print(f"Ready: {profile.display_name}\n  {path}")
             continue
-        profile.path.mkdir(parents=True, exist_ok=True)
-        print(f"Downloading {profile.display_name} into:\n  {profile.path}")
-        download_model(profile.download_name, output_dir=str(profile.path))
-        if not model_is_ready(profile):
-            raise RuntimeError(f"Download completed but the model is incomplete: {profile.path}")
+        path.mkdir(parents=True, exist_ok=True)
+        print(f"Downloading {profile.display_name} into:\n  {path}")
+        download_model(profile.download_name, output_dir=str(path))
+        if not model_is_ready(profile, models_dir=models_dir):
+            raise RuntimeError(f"Download completed but the model is incomplete: {path}")
         print(f"Ready: {profile.display_name}")
     return 0
 

@@ -16,6 +16,7 @@ class QueueStatus(StrEnum):
     QUEUED = "Queued"
     PREPARING = "Preparing"
     DOWNLOADING = "Downloading"
+    UPLOADING = "Uploading"
     RETRYING = "Waiting to retry"
     TRANSCRIBING = "Transcribing"
     SAVING = "Saving"
@@ -24,7 +25,10 @@ class QueueStatus(StrEnum):
     CANCELLED = "Cancelled"
 
 
-ACTIVE_STATUSES = {QueueStatus.PREPARING, QueueStatus.DOWNLOADING, QueueStatus.RETRYING, QueueStatus.TRANSCRIBING, QueueStatus.SAVING}
+ACTIVE_STATUSES = {
+    QueueStatus.PREPARING, QueueStatus.DOWNLOADING, QueueStatus.UPLOADING,
+    QueueStatus.RETRYING, QueueStatus.TRANSCRIBING, QueueStatus.SAVING,
+}
 RETRYABLE_STATUSES = {QueueStatus.QUEUED, QueueStatus.ERROR, QueueStatus.CANCELLED}
 
 

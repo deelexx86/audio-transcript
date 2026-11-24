@@ -11,12 +11,14 @@ from time import monotonic
 
 from PySide6.QtCore import QObject, Signal, Slot
 
+from audio_transcript.acceleration import ExecutionMode
 from audio_transcript.artifacts import write_artifacts
 from audio_transcript.audio import probe_duration
 from audio_transcript.errors import ProcessingFailure
 from audio_transcript.paths import CONFIG_DIR
 from audio_transcript.profiles import ModelMissingError, ModelProfile, require_local_model
 from audio_transcript.queueing import QueueStatus
+from audio_transcript.remote_gpu import RemoteGPUError, RemoteTranscriber
 from audio_transcript.transcription import LocalTranscriber, TranscriptionCancelled
 from audio_transcript.timing import AttemptTiming
 from audio_transcript.youtube import YouTubeDownloadError, download_audio
@@ -45,11 +47,15 @@ class BatchWorker(QObject):
         output_mode: str,
         *,
         clock: Callable[[], float] = monotonic,
+        mode: ExecutionMode = ExecutionMode.CPU,
+        ssh_alias: str = "",
     ) -> None:
         super().__init__()
         self.items = items
         self.profile = profile
         self.output_mode = output_mode
+        self.mode = ExecutionMode(mode)
+        self.ssh_alias = ssh_alias
         self._stop_requested = threading.Event()
         self._clock = clock
 
@@ -65,7 +71,7 @@ class BatchWorker(QObject):
             timing.observe(position, duration)
         self.timing_changed.emit(item_id, timing.snapshot())
         if position is None:
-            self.state_changed.emit(item_id, phase, 0)
+            self.state_changed.emit(item_id, phase, -1 if phase == QueueStatus.UPLOADING else 0)
 
     def request_stop(self) -> None:
         self._stop_requested.set()
@@ -73,7 +79,7 @@ class BatchWorker(QObject):
     @Slot()
     def run(self) -> None:
         stopped = False
-        transcriber: LocalTranscriber | None = None
+        transcriber: LocalTranscriber | RemoteTranscriber | None = None
         for work in self.items:
             if self._stop_requested.is_set():
                 stopped = True
@@ -85,7 +91,8 @@ class BatchWorker(QObject):
                     source = work.source
                     title = ""
                     if work.source_url:
-                        require_local_model(self.profile)
+                        if self.mode != ExecutionMode.REMOTE_CUDA:
+                            require_local_model(self.profile)
                         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
                         directory = Path(cleanup.enter_context(
                             TemporaryDirectory(prefix="youtube-", dir=CONFIG_DIR)
@@ -103,11 +110,18 @@ class BatchWorker(QObject):
                         )
                         source, title = audio.path, audio.title
                         self._state(work.id, timing, QueueStatus.PREPARING, 0)
-                    duration = probe_duration(source, decode_first_frame=True) or work.duration
+                    duration = work.duration
+                    if self.mode != ExecutionMode.REMOTE_CUDA:
+                        duration = probe_duration(source, decode_first_frame=True) or duration
                     if self._stop_requested.is_set():
                         raise TranscriptionCancelled("Transcription was stopped.")
                     if transcriber is None:
-                        transcriber = LocalTranscriber(self.profile)
+                        if self.mode == ExecutionMode.REMOTE_CUDA:
+                            transcriber = RemoteTranscriber(self.profile, self.ssh_alias)
+                        elif self.mode == ExecutionMode.LOCAL_CUDA:
+                            transcriber = LocalTranscriber(self.profile, mode=self.mode)
+                        else:
+                            transcriber = LocalTranscriber(self.profile)
                     result = transcriber.transcribe(
                         source,
                         duration=duration,
@@ -129,6 +143,7 @@ class BatchWorker(QObject):
                         language=result.language,
                         speaker=work.speaker,
                         model_name=self.profile.artifact_name,
+                        execution_mode=self.mode,
                         output_mode="workspace" if work.source_url else self.output_mode,
                         source_url=work.source_url,
                         source_title=title,
@@ -158,8 +173,9 @@ class BatchWorker(QObject):
                 message = ProcessingFailure(
                     source=str(work.source_url or work.source),
                     details=str(exc),
-                    kind=exc.kind if isinstance(exc, YouTubeDownloadError)
+                    kind=exc.kind if isinstance(exc, (YouTubeDownloadError, RemoteGPUError))
                     else "model_missing" if isinstance(exc, ModelMissingError)
+                    else "local_cuda" if self.mode == ExecutionMode.LOCAL_CUDA
                     else "transcription",
                 )
                 self.item_failed.emit(work.id, message)

@@ -179,7 +179,7 @@ def test_worker_receives_displayed_order(tmp_path, monkeypatch):
         finished = Signal(bool)
         timing_changed = Signal(str, object)
 
-        def __init__(self, items, profile, output_mode):
+        def __init__(self, items, profile, output_mode, *, mode, ssh_alias):
             super().__init__()
             captured.extend(item.source.name for item in items)
 
@@ -311,7 +311,7 @@ def test_retry_selected_resets_attempt_duration_and_keeps_other_results(tmp_path
         item_completed = Signal(str, object)
         item_failed = Signal(str, object)
         finished = Signal(bool)
-        def __init__(self, items, profile, output_mode):
+        def __init__(self, items, profile, output_mode, *, mode, ssh_alias):
             super().__init__()
             self.items = items
         def run(self):
@@ -423,4 +423,42 @@ def test_retry_selected_and_remove_completed_preserve_other_items(monkeypatch, t
     assert output.read_text(encoding="utf-8") == "completed transcript"
     assert all(path.read_bytes() == b"source untouched" for path in paths)
     assert window.queue.add_paths([paths[0]]).added
+    window.close()
+
+
+def test_acceleration_dialog_persists_remote_choice_independently(tmp_path):
+    from PySide6.QtCore import QTimer
+    from PySide6.QtWidgets import QComboBox, QDialogButtonBox, QLineEdit
+
+    from audio_transcript.settings import AppSettings
+
+    app = QApplication.instance() or QApplication([])
+    store = SettingsStore(tmp_path / "settings.json")
+    store.save(AppSettings(model_profile="fast", interface_language="es"))
+    window = MainWindow(store)
+    observed = {}
+
+    def choose_mode():
+        dialog = app.activeModalWidget()
+        modes = dialog.findChild(QComboBox)
+        alias = dialog.findChild(QLineEdit)
+        save = dialog.findChild(QDialogButtonBox).button(QDialogButtonBox.StandardButton.Ok)
+        modes.setCurrentIndex(modes.findData("remote_cuda"))
+        observed["mode"] = modes.currentText()
+        alias.setText("-bad")
+        observed["invalid_disabled"] = not save.isEnabled()
+        alias.setText("gpu-tested")
+        save.click()
+
+    QTimer.singleShot(0, choose_mode)
+    window.settings_button.click()
+    assert observed == {"mode": "GPU NVIDIA remota", "invalid_disabled": True}
+    assert window.badge.text() == "GPU NVIDIA remota"
+    assert window.model_combo.currentData() == "fast"
+    assert store.load().execution_mode == "remote_cuda"
+    assert store.load().ssh_alias == "gpu-tested"
+    window._processing = True
+    window._update_actions()
+    assert not window.settings_button.isEnabled()
+    window._processing = False
     window.close()

@@ -8,10 +8,6 @@
         <translation>Transcripciones fieles de audio y vídeo locales</translation>
     </message>
     <message>
-        <source>LOCAL TRANSCRIPTION</source>
-        <translation>TRANSCRIPCIÓN LOCAL</translation>
-    </message>
-    <message>
         <source>Add Link</source>
         <translation>Añadir enlace</translation>
     </message>
@@ -82,10 +78,6 @@
     <message>
         <source>Paste a video link</source>
         <translation>Pegue un enlace de vídeo</translation>
-    </message>
-    <message>
-        <source>Downloads audio when Transcribe starts; speech recognition stays local.</source>
-        <translation>El audio se descarga al iniciar la transcripción; el reconocimiento de voz sigue siendo local.</translation>
     </message>
     <message>
         <source>Retry only selected Error or Cancelled items.</source>
@@ -188,6 +180,50 @@
         <translation>Duración del contenido procesado por tiempo de inferencia; excluye carga del modelo y decodificación.</translation>
     </message>
     <message>
+        <source>Acceleration…</source>
+        <translation>Aceleración…</translation>
+    </message>
+    <message>
+        <source>Downloads audio when Transcribe starts, then uses the selected execution mode.</source>
+        <translation>Descarga el audio al iniciar la transcripción y usa el modo de ejecución seleccionado.</translation>
+    </message>
+    <message>
+        <source>Local CPU</source>
+        <translation>CPU local</translation>
+    </message>
+    <message>
+        <source>Local NVIDIA GPU</source>
+        <translation>GPU NVIDIA local</translation>
+    </message>
+    <message>
+        <source>Remote NVIDIA GPU</source>
+        <translation>GPU NVIDIA remota</translation>
+    </message>
+    <message>
+        <source>Acceleration</source>
+        <translation>Aceleración</translation>
+    </message>
+    <message>
+        <source>Execution mode</source>
+        <translation>Modo de ejecución</translation>
+    </message>
+    <message>
+        <source>SSH host alias</source>
+        <translation>Alias del host SSH</translation>
+    </message>
+    <message>
+        <source>Remote mode sends source media over SSH to the selected host. Transcript files are saved on this computer.</source>
+        <translation>El modo remoto envía los archivos multimedia al host seleccionado por SSH. Las transcripciones se guardan en este equipo.</translation>
+    </message>
+    <message>
+        <source>Save</source>
+        <translation>Guardar</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Cancelar</translation>
+    </message>
+    <message>
         <source>Show settings · {model} · {output}</source>
         <translation>Ajustes · {model} · {output}</translation>
     </message>
@@ -202,10 +238,6 @@
     <message>
         <source>This YouTube video is already in the queue.</source>
         <translation>Este vídeo de YouTube ya está en la cola.</translation>
-    </message>
-    <message>
-        <source>Video queued. Transcribe downloads audio, then transcribes locally.</source>
-        <translation>Vídeo añadido. Al transcribir, se descarga el audio y se reconoce localmente.</translation>
     </message>
     <message>
         <source>Could not save settings: {error}</source>
@@ -260,8 +292,16 @@
         <translation>Vista previa de la transcripción</translation>
     </message>
     <message>
-        <source>Using local model: {model}</source>
-        <translation>Modelo local: {model}</translation>
+        <source>Video queued. Transcribe downloads audio before speech recognition.</source>
+        <translation>Vídeo en cola. El audio se descarga antes del reconocimiento de voz.</translation>
+    </message>
+    <message>
+        <source>Set a valid SSH host alias in Acceleration settings.</source>
+        <translation>Indica un alias de host SSH válido en los ajustes de aceleración.</translation>
+    </message>
+    <message>
+        <source>Using {mode} · {model}</source>
+        <translation>En uso: {mode} · {model}</translation>
     </message>
     <message>
         <source>Stop requested — the current safe inference boundary may take a moment.</source>
@@ -320,6 +360,10 @@
         <translation>Descargando</translation>
     </message>
     <message>
+        <source>Uploading over SSH</source>
+        <translation>Enviando por SSH</translation>
+    </message>
+    <message>
         <source>Waiting to retry</source>
         <translation>Esperando reintento</translation>
     </message>
@@ -368,6 +412,26 @@ Estado: {status}</translation>
     <message>
         <source>The selected model is not installed. Run bootstrap_models.bat while online, then try again.</source>
         <translation>El modelo seleccionado no está instalado. Ejecute bootstrap_models.bat con conexión a internet y vuelva a intentarlo.</translation>
+    </message>
+    <message>
+        <source>Local GPU processing failed. Check the audio, NVIDIA driver and CUDA setup in README.</source>
+        <translation>Falló el procesamiento en la GPU local. Revisa el audio, el controlador NVIDIA y la configuración de CUDA en el README.</translation>
+    </message>
+    <message>
+        <source>GPU processing failed on the SSH host. Check the audio and the host&apos;s CUDA setup.</source>
+        <translation>Falló el procesamiento en la GPU del host SSH. Revisa el audio y la configuración de CUDA del host.</translation>
+    </message>
+    <message>
+        <source>The remote job failed. Check the SSH alias, host key, connection and worker setup.</source>
+        <translation>Falló la tarea remota. Revisa el alias SSH, la clave del host, la conexión y la configuración del proceso remoto.</translation>
+    </message>
+    <message>
+        <source>The selected model is missing on the SSH host. Rerun the remote GPU setup.</source>
+        <translation>El modelo seleccionado no está instalado en el host SSH. Ejecuta de nuevo la configuración de la GPU remota.</translation>
+    </message>
+    <message>
+        <source>The SSH host could not decode this file. Check that it contains a readable audio track.</source>
+        <translation>El host SSH no pudo decodificar este archivo. Comprueba que contiene una pista de audio legible.</translation>
     </message>
     <message>
         <source>YouTube requested an anti-bot check. The automatic retry failed. Try Retry Selected later; browser playback may still work.</source>

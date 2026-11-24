@@ -5,6 +5,7 @@ import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from audio_transcript.acceleration import ExecutionMode, valid_ssh_alias
 from audio_transcript.paths import SETTINGS_PATH
 
 
@@ -19,6 +20,8 @@ class AppSettings:
     splitter_sizes: list[int] | None = None
     settings_expanded: bool = True
     interface_language: str = ""
+    execution_mode: str = ExecutionMode.CPU
+    ssh_alias: str = "gpu-tts"
 
 
 class SettingsStore:
@@ -45,6 +48,11 @@ class SettingsStore:
                 settings.settings_expanded = True
             if settings.interface_language not in ("", "en", "ru", "es", "de"):
                 settings.interface_language = ""
+            if settings.execution_mode not in tuple(ExecutionMode):
+                settings.execution_mode = ExecutionMode.CPU
+            if not valid_ssh_alias(settings.ssh_alias):
+                # Preserve the selected mode and require an explicit valid destination.
+                settings.ssh_alias = ""
             return settings
         except (OSError, ValueError, TypeError, json.JSONDecodeError):
             return AppSettings()
