@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from audio_transcript.acceleration import ExecutionMode
 from audio_transcript.audio import format_duration
 from audio_transcript.paths import TRANSCRIPTS_DIR
 
@@ -66,6 +67,7 @@ def render_markdown(
     transcript: str,
     source_url: str | None = None,
     source_title: str = "",
+    execution_mode: ExecutionMode = ExecutionMode.CPU,
 ) -> str:
     clean_speaker = " ".join(speaker.split())
     lines = [
@@ -82,6 +84,10 @@ def render_markdown(
         lines.append(f"Title: {' '.join(source_title.split())}")
     if clean_speaker:
         lines.append(f"Speaker: {clean_speaker}")
+    if execution_mode == ExecutionMode.LOCAL_CUDA:
+        lines.append("Execution: Local NVIDIA GPU (CUDA float16)")
+    if execution_mode == ExecutionMode.REMOTE_CUDA:
+        lines.append("Execution: Remote NVIDIA GPU (SSH, CUDA float16)")
     lines.extend(
         [
             f"Model: {model_name}",
@@ -108,6 +114,7 @@ def write_artifacts(
     workspace: str | Path = TRANSCRIPTS_DIR,
     source_url: str | None = None,
     source_title: str = "",
+    execution_mode: ExecutionMode = ExecutionMode.CPU,
 ) -> ArtifactResult:
     clean_transcript = transcript.strip()
     parent, base_name = output_parent(source, output_mode, processed_at, workspace)
@@ -129,6 +136,7 @@ def write_artifacts(
                 transcript=clean_transcript,
                 source_url=source_url,
                 source_title=source_title,
+                execution_mode=execution_mode,
             ),
             encoding="utf-8",
         )

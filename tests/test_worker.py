@@ -165,3 +165,97 @@ def test_missing_model_prevents_youtube_download(monkeypatch, tmp_path):
     worker.item_failed.connect(lambda _, message: errors.append(message))
     worker.run()
     assert len(errors) == 1 and "Model is not installed" in errors[0].details
+
+
+def test_attempt_snapshots_include_saving_cleanup_failure_and_cancellation(monkeypatch, tmp_path):
+    from test_timing import Clock
+    from audio_transcript.transcription import TranscriptionCancelled
+    from audio_transcript.youtube import DownloadedAudio
+    clock = Clock()
+    monkeypatch.setattr(worker_module, "CONFIG_DIR", tmp_path / "config")
+    monkeypatch.setattr(worker_module, "require_local_model", lambda _: None)
+    def download(url, directory, **kwargs):
+        clock.advance(7)
+        kwargs["on_retry"]()
+        clock.advance(10)
+        kwargs["on_progress"](50)
+        clock.advance(3)
+        return DownloadedAudio(directory / "audio.webm", "Synthetic")
+    def probe(source, **kwargs):
+        clock.advance(2)
+        if source.name == "bad.wav":
+            raise RuntimeError("synthetic failure")
+        return 120
+    class Transcriber:
+        def __init__(self, profile):
+            clock.advance(8)
+        def transcribe(self, source, **kwargs):
+            if source.name == "cancel.wav":
+                clock.advance(4)
+                raise TranscriptionCancelled()
+            kwargs["on_timing"]("Transcribing", None, 120)
+            for position in (10.5, 20.5, 30.5):
+                clock.advance(5)
+                kwargs["on_timing"]("Transcribing", position, 120)
+            return TranscriptionResult("Synthetic words", "en", 120)
+    def save(**kwargs):
+        clock.advance(6)
+        return ArtifactResult(tmp_path, tmp_path / "transcript.txt", tmp_path / "transcript.md")
+    monkeypatch.setattr(worker_module, "download_audio", download)
+    monkeypatch.setattr(worker_module, "probe_duration", probe)
+    monkeypatch.setattr(worker_module, "LocalTranscriber", Transcriber)
+    monkeypatch.setattr(worker_module, "write_artifacts", save)
+    worker = BatchWorker([
+        WorkItem("video", Path("youtube-synthetic"), "", None, "https://youtu.be/jNQXAC9IVRw"),
+        WorkItem("bad", Path("bad.wav"), "", None),
+        WorkItem("cancel", Path("cancel.wav"), "", None),
+        WorkItem("queued", Path("queued.wav"), "", None),
+    ], ACCURACY, "workspace", clock=clock)
+    snapshots, completed = [], []
+    worker.timing_changed.connect(lambda item_id, snapshot: snapshots.append((item_id, snapshot)))
+    worker.item_completed.connect(lambda _, payload: completed.append(payload))
+    worker.run()
+    final = {item_id: snap for item_id, snap in snapshots}
+    assert final["video"].view(clock()).elapsed == 51
+    assert completed[0]["processing_seconds"] == 51
+    assert final["bad"].view(clock()).elapsed == 2
+    assert final["cancel"].view(clock()).elapsed == 6
+    assert final["cancel"].phase == "Cancelled"
+    assert "queued" not in final
+    wait = next(snap for _, snap in snapshots if snap.phase == "Waiting to retry")
+    assert wait.view(wait.started_at + 12).elapsed == 12
+    assert wait.view(wait.started_at + 12).remaining is None
+    assert all(snap.view(clock()).remaining is None for snap in final.values())
+
+
+def test_stop_during_saving_preserves_completed_result_and_skips_next(monkeypatch, tmp_path):
+    from test_timing import Clock
+    clock = Clock()
+    monkeypatch.setattr(worker_module, "probe_duration", lambda *args, **kwargs: 120)
+    class Transcriber:
+        def __init__(self, profile):
+            pass
+        def transcribe(self, source, **kwargs):
+            kwargs["on_timing"]("Transcribing", None, 120)
+            clock.advance(5)
+            kwargs["on_timing"]("Transcribing", 120, 120)
+            return TranscriptionResult("Synthetic", "en", 120)
+    monkeypatch.setattr(worker_module, "LocalTranscriber", Transcriber)
+    worker = BatchWorker([WorkItem("first", Path("first.wav"), "", 120),
+                          WorkItem("next", Path("next.wav"), "", 120)],
+                         ACCURACY, "workspace", clock=clock)
+    def save(**kwargs):
+        worker.request_stop()
+        clock.advance(7)
+        return ArtifactResult(tmp_path, tmp_path / "transcript.txt", tmp_path / "transcript.md")
+    monkeypatch.setattr(worker_module, "write_artifacts", save)
+    results, timings, finished = [], [], []
+    worker.item_completed.connect(lambda item_id, payload: results.append((item_id, payload)))
+    worker.timing_changed.connect(lambda item_id, snapshot: timings.append((item_id, snapshot)))
+    worker.finished.connect(finished.append)
+    worker.run()
+    assert results[0][0] == "first"
+    assert results[0][1]["processing_seconds"] == 12
+    assert timings[-1][1].phase == "Done"
+    assert not any(item_id == "next" for item_id, _ in timings)
+    assert finished == [True]

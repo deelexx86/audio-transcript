@@ -42,16 +42,18 @@ class ModelMissingError(RuntimeError):
     pass
 
 
-def model_is_ready(profile: ModelProfile) -> bool:
+def model_is_ready(profile: ModelProfile, *, models_dir: Path | None = None) -> bool:
+    path = models_dir / profile.directory_name if models_dir is not None else profile.path
     required = ("config.json", "model.bin", "tokenizer.json")
-    return profile.path.is_dir() and all((profile.path / name).is_file() for name in required)
+    return path.is_dir() and all((path / name).is_file() for name in required)
 
 
-def require_local_model(profile: ModelProfile) -> Path:
-    if not model_is_ready(profile):
+def require_local_model(profile: ModelProfile, *, models_dir: Path | None = None) -> Path:
+    path = (models_dir / profile.directory_name) if models_dir is not None else profile.path
+    if not model_is_ready(profile, models_dir=path.parent):
         raise ModelMissingError(
             f"The {profile.display_name} model is not installed.\n\n"
             "Run bootstrap_models.bat while online, then try again.\n\n"
-            f"Expected local model:\n{profile.path}"
+            f"Expected local model:\n{path}"
         )
-    return profile.path
+    return path

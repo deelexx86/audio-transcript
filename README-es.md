@@ -4,7 +4,7 @@
 
 Audio Transcript es una utilidad de escritorio para Windows 11 que convierte mensajes de voz de Telegram, archivos de audio y el sonido de vídeos locales en texto fiel. Ofrece una cola secuencial, vista previa, copia al portapapeles y archivos TXT y Markdown.
 
-El reconocimiento se ejecuta localmente con `faster-whisper` y CTranslate2. Tras descargar las dependencias y los modelos, los archivos locales se procesan sin internet. El audio y los textos permanecen en el equipo; no se utilizan API de transcripción, cuentas, telemetría, almacenamiento en la nube, base de datos ni servidor.
+El reconocimiento usa `faster-whisper` y CTranslate2. Tras la instalación, la CPU local y la GPU NVIDIA local funcionan sin conexión. El modo remoto opcional envía los archivos multimedia a un equipo Windows seleccionado por SSH. Las transcripciones se guardan en este equipo.
 
 ## Requisitos
 
@@ -41,6 +41,15 @@ Seleccione **Idioma de la interfaz** encima del panel de ajustes: English, Ру�
 
 Solo cambia la interfaz. El idioma del audio se detecta automáticamente; el texto transcrito, los nombres de archivo y los metadatos Markdown se conservan. Los detalles técnicos de los errores mantienen su redacción original.
 
+## Aceleración NVIDIA
+
+En **Aceleración…**, elija **CPU local**, **GPU NVIDIA local** o **GPU NVIDIA remota**. Ambos perfiles de modelo están disponibles en todos los modos. El modo se muestra en la ventana principal y se conserva entre sesiones. Un fallo no cambia el modo.
+
+- La **GPU NVIDIA local** necesita Windows x64, una GPU NVIDIA compatible con float16, un controlador compatible con CUDA 12.8 y los modelos locales. Ejecute `.\.venv\Scripts\python.exe scripts\setup_gpu.py` una vez desde el repositorio. Las bibliotecas CUDA se instalan en el entorno del proyecto.
+- La **GPU NVIDIA remota** necesita Windows x64, Python 3.11, un controlador NVIDIA y Windows OpenSSH con su intérprete predeterminado. Configure el acceso por clave SSH y verifique la clave del host. Ejecute `.\.venv\Scripts\python.exe scripts\setup_gpu.py --remote gpu-tts` una vez y sustituya `gpu-tts` por su alias SSH si es necesario. El proceso remoto, las bibliotecas CUDA y ambos modelos se instalan de forma aislada en `%LOCALAPPDATA%\AudioTranscriptGpu`. Repita el comando para actualizar el proceso remoto o instalar modelos que falten.
+
+Seleccione el mismo alias en la aplicación. SSH funciona sin interacción y verifica la clave del host. **Enviando por SSH** indica que el archivo se está transfiriendo. Detener cierra la sesión SSH. Si se pierde la conexión, el proceso remoto termina tras unos 45 segundos sin datos ni señales periódicas. El archivo temporal se elimina al cerrar su descriptor, y la memoria GPU se libera después de cada tarea.
+
 ## Flujo de trabajo
 
 1. Abra **Ajustes** si es necesario. Elija **Precisión** para máxima fidelidad o **Rápido** para reducir el tiempo de CPU.
@@ -55,9 +64,15 @@ Solo cambia la interfaz. El idioma del audio se detecta automáticamente; el tex
 
 **Ocultar ajustes** libera espacio para la cola y la vista previa. El botón de apertura resume el modelo y el destino; la descripción completa aparece al pasar el cursor. El estado del panel se guarda localmente. Ordenar es una acción puntual: las nuevas entradas se añaden al final y los movimientos manuales sustituyen el orden previo. Las duraciones desconocidas van primero en orden ascendente. La cola y las fechas de incorporación no se restauran al reiniciar.
 
+## Tiempo de procesamiento, velocidad y tiempo restante
+
+Debajo de la vista previa, separados de los contadores del lote, aparecen el archivo actual, la fase, la posición procesada, **Transcurrido**, **Restante** y **Velocidad**. El reloj monotónico se actualiza cada medio segundo, incluso durante la carga del modelo, decodificación, descarga, espera de reintento y guardado. Stop mantiene el reloj hasta la parada segura. Done, Error y Cancelled conservan la duración medida; seleccionar una fila terminada muestra su tiempo. Retry Selected inicia mediciones nuevas. Las duraciones permanecen en el estado de resultados de la sesión; Las tareas con GPU también registran el modo en Markdown.
+
+La velocidad divide el tiempo de audio procesado por el tiempo real de inferencia, en **× tiempo real**; excluye carga del modelo, decodificación, descargas y guardado. Restante aproxima solo la transcripción, sin estimar el lote ni la descarga. Requiere al menos tres observaciones con avance separadas por un segundo, cinco segundos de inferencia y cinco segundos de contenido procesado. Los segmentos entregados juntos se agrupan, la velocidad se suaviza y el tiempo se redondea hacia arriba a minutos (pasos de cinco minutos a partir de diez minutos). Al principio aparece **Estimando…**; con duración desconocida, otras fases o progreso detenido aparece **No disponible**. Las estimaciones caducan tras 30–120 segundos según los intervalos observados; recuperarlas requiere observaciones nuevas. Estos criterios pueden impedir una estimación en grabaciones cortas o ventanas de inferencia lentas.
+
 ## Vídeos de YouTube
 
-**Añadir enlace** valida y añade un vídeo sin contactar con YouTube. **Transcribir** descarga el audio y utiliza el modelo Whisper local seleccionado. Los vídeos y archivos locales comparten la cola secuencial. Se muestran por separado los progresos de descarga y reconocimiento. Detener cancela en el siguiente punto seguro; una solicitud de red activa puede tardar hasta su límite de espera.
+**Añadir enlace** valida y añade un vídeo sin contactar con YouTube. **Transcribir** descarga el audio y utiliza el modelo Whisper seleccionado en el modo activo. Los vídeos y archivos locales comparten la cola secuencial. Se muestran por separado los progresos de descarga y reconocimiento. Detener cancela en el siguiente punto seguro; una solicitud de red activa puede tardar hasta su límite de espera.
 
 Si YouTube solicita una comprobación antibot, se muestra **Esperando reintento** durante 10 segundos y se intenta una vez más con una nueva sesión de invitado del descargador. Detener también cancela la espera. Si vuelve a fallar, puede usar **Reintentar selección** más tarde; la cola continúa. Otras categorías no activan este reintento adicional, aunque el descargador mantiene sus reintentos limitados de conexiones y fragmentos.
 
@@ -67,7 +82,7 @@ Admite `youtube.com/watch?v=...`, `youtu.be/...`, Shorts y enlaces de vídeos in
 
 `yt-dlp` descarga audio en una carpeta temporal `config/youtube-*`, que se elimina tras éxito, error o cancelación. Un cierre forzado o un corte eléctrico puede dejarla pendiente. No crea un archivo permanente de vídeos/audio ni elimina los archivos locales de origen.
 
-YouTube siempre guarda en `transcripts/YYYY/YYYY-MM-DD/youtube-VIDEO_ID/`, incluso si el destino local es junto al origen. Las colisiones reciben un sufijo numérico. Markdown incluye URL y título; TXT contiene solo el texto del modelo local. El título aparece al completar la fila. Un reintento vuelve a descargar el audio.
+YouTube siempre guarda en `transcripts/YYYY/YYYY-MM-DD/youtube-VIDEO_ID/`, incluso si el destino local es junto al origen. Las colisiones reciben un sufijo numérico. Markdown incluye URL y título; TXT contiene solo el texto del modelo. El título aparece al completar la fila. Un reintento vuelve a descargar el audio.
 
 `yt-dlp[default]` incluye los scripts JavaScript correspondientes para resolver comprobaciones. Requiere Node.js o Deno compatible; consulte la [guía oficial de yt-dlp](https://github.com/yt-dlp/yt-dlp/wiki/EJS). No necesita instalar FFmpeg aparte: PyAV decodifica el audio. Los componentes y modelos no se instalan automáticamente durante el uso.
 
@@ -89,7 +104,7 @@ Audio: `.ogg` (incluido Telegram Ogg/Opus), `.mp3`, `.m4a`, `.wav`, `.webm`, `.a
 
 Vídeo: `.mp4`, `.m4v`, `.mkv`, `.mov`, `.avi`, `.wmv`, `.asf`, `.flv`, `.webm`, `.mpg`, `.mpeg`, `.ts`, `.mts`, `.m2ts`, `.vob`, `.ogv`, `.3gp`, `.3g2`. Se añaden mediante las acciones habituales. PyAV decodifica directamente la primera pista de audio; no hace falta exportar audio ni instalar FFmpeg. No procesa imágenes ni subtítulos. La compatibilidad depende de una pista legible, sin cifrado y compatible con el decodificador. Un vídeo sin audio o ilegible produce un error individual; la cola continúa.
 
-Los archivos de origen pueden permanecer en cualquier ubicación local: nunca se copian, mueven, renombran ni eliminan. Los vídeos comparten destinos, protección contra sobrescritura, TXT/Markdown, vista previa y copia con los archivos de audio.
+Los archivos de origen pueden permanecer en cualquier ubicación local: nunca se mueven, renombran ni eliminan. Los vídeos comparten destinos, protección contra sobrescritura, TXT/Markdown, vista previa y copia con los archivos de audio.
 
 - `inbox\`: carpeta opcional de entrada; se explora sin subcarpetas.
 - `models\`: los dos modelos locales.
@@ -108,7 +123,7 @@ El modo junto al origen crea `source-name_transcript\`. Nunca sobrescribe carpet
 
 ## Privacidad
 
-PyAV decodifica localmente y Whisper, almacenado en el proyecto, reconoce en la CPU. Los archivos locales no generan solicitudes de red intencionadas. YouTube contacta con el servicio y sus servidores multimedia; el reconocimiento sigue siendo local y las transcripciones no se suben. No se resume ni reescribe el significado ni se duplica permanentemente el audio de origen. La función YouTube, solicitada explícitamente anteriormente, amplía el límite original de entrada sin conexión de `BRIEF.md`; ese archivo no se modifica. `inbox\`, `transcripts\`, `models\`, `.venv\` y `config\settings.json` son datos privados de ejecución protegidos por las reglas de Git.
+PyAV decodifica y Whisper reconoce en el equipo elegido en **Aceleración…**. Los modos locales mantienen los originales en este equipo. El modo remoto envía por SSH el archivo multimedia completo, incluido el vídeo, o el audio descargado de YouTube. El texto regresa y los archivos de transcripción se guardan aquí. La descarga contacta con YouTube y sus servidores multimedia. La aplicación no resume ni reescribe el significado. Las reglas de Git protegen los datos privados en `inbox\`, `transcripts\`, `models\`, `.venv\` y `config\settings.json`.
 
 ## Pruebas
 

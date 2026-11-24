@@ -4,7 +4,7 @@
 
 Audio Transcript is a focused Windows 11 desktop utility for turning Telegram voice messages, common audio files, and the audio from local video files into faithful text. It provides a sequential queue, transcript preview, clipboard copy, and both TXT and Markdown artifacts.
 
-Transcription runs locally with `faster-whisper` and CTranslate2. After dependencies and models have been downloaded during setup, local-file transcription works offline: audio and transcripts stay on this computer, and the app uses no transcription API, account, telemetry, cloud storage, backend, or local server.
+Transcription uses `faster-whisper` and CTranslate2. Local CPU and local NVIDIA GPU processing work offline after setup. An optional SSH mode sends media to a Windows GPU computer you select. Transcripts are saved on this computer.
 
 ## Requirements
 
@@ -38,6 +38,15 @@ The bootstrap is repeatable and skips complete models. Model files are intention
 
 Double-click `run.bat`. It starts the desktop application with `.venv\Scripts\pythonw.exe`, so normal use does not require a terminal.
 
+## Optional NVIDIA acceleration
+
+Use **Acceleration…** to select **Local CPU**, **Local NVIDIA GPU**, or **Remote NVIDIA GPU**. Both model profiles are available in each mode. The main window shows the selected mode. Settings persist, and a failure stays in the selected mode.
+
+- **Local NVIDIA GPU** requires Windows x64, a CUDA-compatible NVIDIA GPU with float16 support, a current driver compatible with CUDA 12.8, and the local models. Run `.\.venv\Scripts\python.exe scripts\setup_gpu.py` once from the repository. CUDA libraries are installed in the project environment.
+- **Remote NVIDIA GPU** requires a Windows x64 host with Python 3.11, an NVIDIA driver, and Windows OpenSSH using its default command shell. Configure key-based SSH access and verify the host key before provisioning. Run `.\.venv\Scripts\python.exe scripts\setup_gpu.py --remote gpu-tts` once, replacing `gpu-tts` with your SSH alias if needed. Setup installs the isolated worker, CUDA libraries and both models under `%LOCALAPPDATA%\AudioTranscriptGpu` on that host. Run the same command to update the worker or provision missing models.
+
+Choose the matching SSH alias in the application. Jobs use the verified host key and non-interactive OpenSSH. **Uploading over SSH** shows activity while the file is transferred. Stop closes the job's SSH session, and a remote lease expires after about 45 seconds without data or a heartbeat if the connection disappears. The worker uses a delete-on-close temporary media file and exits after each item, releasing its GPU memory.
+
 ## Workflow
 
 Choose **Interface language** above the settings panel: English, Русский, Español, or Deutsch. The selector stays visible when settings are collapsed and works during processing. Changes apply immediately and are saved in `config/settings.json`. On first launch, the app uses a supported Windows display language, falling back to English. This setting changes only the interface: speech language is detected automatically, and transcript text, filenames, and Markdown metadata are preserved. Technical diagnostic details retain their original wording.
@@ -56,9 +65,15 @@ Choose **Interface language** above the settings panel: English, Русский,
 
 Sorting is a one-time queue action. Newly added files append at the end, and manual moves override the previous sort. Unknown durations sort before known durations in ascending order. The queue and addition timestamps are session-only and are not restored after restarting.
 
+## Processing time, speed and remaining time
+
+Below the preview, the current-file area shows the phase, processed media position, **Elapsed**, **Remaining**, and **Speed**, separately from the batch counts. Elapsed uses a monotonic clock and refreshes every half second, including model loading, decoding, downloading, SSH upload, retry waits and saving. Stop keeps this clock running until a safe termination point. Done, Error and Cancelled retain the measured duration; selecting a finished row shows that attempt's timing. Retry Selected starts fresh measurements. Durations are kept in the session's per-item result state; GPU runs also record the execution mode in Markdown.
+
+Speed is processed audio time divided by actual inference time, displayed as **× realtime**; model loading, decoding, downloads, SSH upload and saving are excluded. Remaining is a transcription-only approximation, not a batch or download ETA. It requires at least three advancing observations separated by a second, five seconds of inference and five seconds of media progress. Burst-delivered segments are coalesced, throughput is smoothed, and estimates are rounded up to minutes (five-minute steps above ten minutes). Early observations show **Estimating…**; unknown duration, non-transcription phases or stalled progress show **Unavailable**. Stale estimates expire after 30–120 seconds depending on observed intervals, and recovery requires fresh observations. These conservative thresholds may suppress ETA for short recordings or slow inference windows.
+
 ## YouTube videos
 
-**Add Link** validates and queues one video without contacting YouTube. **Transcribe** downloads the audio, then uses the selected local Whisper model. YouTube videos and local files share the same sequential queue. Download progress is shown separately from transcription progress; Stop requests cancellation at the next safe download/inference boundary (an in-flight network request may take up to its timeout).
+**Add Link** validates and queues one video without contacting YouTube. **Transcribe** downloads the audio, then uses the selected Whisper model in the active execution mode. YouTube videos and local files share the same sequential queue. Download progress is shown separately from transcription progress; Stop requests cancellation at the next safe download/inference boundary (an in-flight network request may take up to its timeout).
 
 If YouTube requests an anti-bot check, the row shows **Waiting to retry** for 10 seconds, then the app tries once with a fresh downloader guest session. **Stop** also cancels this wait. If the second attempt fails, the row remains available for **Retry Selected** later; subsequent queue items continue normally. Other error categories do not trigger this extra retry (the downloader still has its bounded connection/fragment retries).
 
@@ -68,7 +83,7 @@ Supported links include `youtube.com/watch?v=...`, `youtu.be/...`, Shorts, and e
 
 Audio is downloaded with `yt-dlp` into an app-created temporary `config/youtube-*` directory. It is removed after completion, failure, or cancellation. A forced process termination or power loss may leave this temporary directory behind. Local source files are never removed. No permanent video or audio archive is created.
 
-YouTube outputs always use `transcripts/YYYY/YYYY-MM-DD/youtube-VIDEO_ID/`, even when **Same folder as source** is selected for local files. Existing outputs receive a numbered suffix. Markdown includes the source video URL and title; TXT remains only the local model's transcript. Video titles appear in completed queue rows. Retrying a YouTube item downloads the audio again.
+YouTube outputs always use `transcripts/YYYY/YYYY-MM-DD/youtube-VIDEO_ID/`, even when **Same folder as source** is selected for local files. Existing outputs receive a numbered suffix. Markdown includes the source video URL and title; TXT remains only the model's transcript. Video titles appear in completed queue rows. Retrying a YouTube item downloads the audio again.
 
 The Python dependency `yt-dlp[default]` includes its matching JavaScript solver scripts. A supported Node.js or Deno runtime is required; see the [official yt-dlp runtime guide](https://github.com/yt-dlp/yt-dlp/wiki/EJS) for setup. No standalone FFmpeg installation is needed: audio-only downloads are decoded with the existing PyAV dependency. Neither downloader components nor speech models are silently installed at runtime.
 
@@ -88,9 +103,9 @@ YouTube changes can require a downloader update independently of the app:
 
 Supported audio formats are `.ogg` (including Telegram Ogg/Opus), `.mp3`, `.m4a`, `.wav`, `.webm`, and `.amr` (AMR-NB / AMR-WB).
 
-Supported video containers are `.mp4`, `.m4v`, `.mkv`, `.mov`, `.avi`, `.wmv`, `.asf`, `.flv`, `.webm`, `.mpg`, `.mpeg`, `.ts`, `.mts`, `.m2ts`, `.vob`, `.ogv`, `.3gp`, and `.3g2`. Add local videos through **+ Files**, **+ Folder**, **Inbox**, or drag & drop, then select **Transcribe** as usual. The first audio track is decoded directly by the existing PyAV dependency and transcribed locally; no separate audio export or standalone FFmpeg installation is needed. Video images and subtitles are not processed. Actual compatibility depends on a readable, unencrypted audio track supported by the decoder. Videos with no audio or unreadable audio produce a per-file error; the remaining batch continues.
+Supported video containers are `.mp4`, `.m4v`, `.mkv`, `.mov`, `.avi`, `.wmv`, `.asf`, `.flv`, `.webm`, `.mpg`, `.mpeg`, `.ts`, `.mts`, `.m2ts`, `.vob`, `.ogv`, `.3gp`, and `.3g2`. Add local videos through **+ Files**, **+ Folder**, **Inbox**, or drag & drop, then select **Transcribe** as usual. The first audio track is decoded directly by the existing PyAV dependency and transcribed in the selected execution mode; no separate audio export or standalone FFmpeg installation is needed. Video images and subtitles are not processed. Actual compatibility depends on a readable, unencrypted audio track supported by the decoder. Videos with no audio or unreadable audio produce a per-file error; the remaining batch continues.
 
-Source files may remain anywhere on the local filesystem and are never copied, moved, renamed, or deleted by the app. Video transcripts use the same output modes, collision handling, TXT/Markdown artifacts, preview, and clipboard actions as audio transcripts.
+Source files may remain anywhere on the local filesystem and are never moved, renamed, or deleted by the app. Video transcripts use the same output modes, collision handling, TXT/Markdown artifacts, preview, and clipboard actions as audio transcripts.
 
 - `inbox\` is an optional staging folder for saved voice messages. The Inbox action scans only that folder, not subfolders.
 - `models\` contains the two local speech-to-text models.
@@ -109,7 +124,7 @@ Same-folder mode creates `source-name_transcript\` beside the audio. Existing fo
 
 ## Privacy
 
-During normal use, PyAV decodes local audio and the selected repository-local Whisper model performs inference on the CPU. Local-file processing makes no intentional network requests. YouTube downloads contact YouTube and its media delivery hosts; speech recognition still runs locally, and transcripts are not uploaded. The app performs no semantic rewriting or summarization and does not permanently duplicate source audio. This explicitly requested YouTube workflow extends the original BRIEF.md offline-input boundary; BRIEF.md itself is unchanged. Treat `inbox\`, `transcripts\`, `models\`, `.venv\`, and `config\settings.json` as private runtime state; repository ignore rules protect them from accidental commits.
+PyAV decodes and Whisper recognizes speech on the machine selected in **Acceleration…**. CPU and local GPU modes keep source media on this computer. Remote GPU mode transfers the complete selected media file (including video if present) or downloaded YouTube audio to the chosen SSH host, then returns transcript text. Output files are saved locally. YouTube downloads contact YouTube and its media delivery hosts. The app performs no semantic rewriting or summarization. Git ignore rules protect private runtime data in `inbox\`, `transcripts\`, `models\`, `.venv\` and `config\settings.json`.
 
 ## Tests and installation check
 

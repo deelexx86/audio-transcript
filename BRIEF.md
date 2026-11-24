@@ -3,7 +3,7 @@
 **Repository:** `deelexx86/audio-transcript`  
 **Local workspace:** `D:\projects\audio-transcript`  
 **Platform:** Windows 11  
-**Status:** V2 ACCEPTED — 2026-10-11; R0 governance baseline  
+**Status:** V2 ACCEPTED — 2026-10-11; R0 governance baseline with the explicitly authorized SSH GPU extension<br>
 **Reference implementation:** `main` at `793c500aa072c0005ef282fa6a0383ef904d113b` (reviewed 2026-10-11)  
 **Artifact role:** Maintained source of truth for product boundaries, user workflows, engineering constraints, and acceptance requirements.  
 
@@ -48,8 +48,8 @@ Do not regress any of these accepted workflows while implementing V2 increments.
 
 ## 3. Stable engineering invariants
 
-1. **Local is the default.** The existing CPU mode must remain usable with no cloud account, API key, or network connection after local setup. Future GPU support must also perform inference locally.
-2. **External transfers are explicit and contextual.** YouTube fetching uses the network to acquire source media. A future cloud STT option may upload media **only after the user deliberately selects that mode and is clearly informed**. Never silently switch from local to cloud.
+1. **Local CPU is the default.** CPU and on-device NVIDIA CUDA must remain usable without a network connection after setup. Both use the same offline model profiles. Remote NVIDIA CUDA runs on a Windows host chosen by the user through existing OpenSSH access.
+2. **External transfers are explicit and contextual.** YouTube fetching acquires source media. Selecting Remote NVIDIA GPU authorizes temporary transfer of each queued media file to the configured SSH host. Show the active mode and transfer phase. Authenticate the host, preserve local storage for final transcripts, and never switch execution modes automatically.
 3. **Source preservation.** Do not rename, move, modify, delete, or permanently duplicate local source media as a processing side effect.
 4. **Faithful transcript.** No automatic LLM rewriting, semantic correction, summarization, or inferred dialogue restructuring. STT model punctuation is acceptable.
 5. **Sequential, observable work.** Preserve a responsive GUI, predictable queue order, cancellation semantics, isolated failures, and inspectable task states. Concurrent transcription requires separate justification.
@@ -100,7 +100,7 @@ The same-folder mode creates a dedicated `_transcript` directory beside the sour
 
 `transcript.txt` contains **only recognized text**. `transcript.md` records compact descriptive metadata such as source, processing date/time, source duration, detected language, optional speaker, actual engine/model, and a matching transcript body. For YouTube, it may also include the normalized source URL and title. Do not expose private system paths unnecessarily.
 
-Future engines must preserve these output contracts. Engine-specific fields may be added without rewriting or invalidating older artifacts.
+Future engines must preserve these output contracts. GPU runs record the execution mode in Markdown. The existing TXT format and older artifacts remain valid.
 
 ---
 
@@ -110,7 +110,7 @@ The main window remains a focused workspace for source intake, queue control, pr
 
 Current interface languages — **English, Russian, Spanish, German** — remain supported. Any new user-visible status, timer, label, dialog, error explanation, or setting must be localized in all four Qt catalogs; editable `.ts` and compiled `.qm` are maintained together. Internal identifiers and artifact content must not depend on translated text. Native system dialogs may follow Windows locale.
 
-The next UI improvement introduces a **separate Settings window/dialog**, retaining only frequently changed choices and concise active-engine status in the main window. Preserve efficient operation at ordinary Windows window sizes and display scaling. Implement this as a bounded reorganization of the existing UI, not a framework rewrite.
+Keep execution mode and SSH destination in the **Acceleration** dialog. The main window shows the selected execution mode and retains frequently changed file options. Lock changes to execution mode, SSH destination and model during an active batch. Preserve efficient operation at ordinary Windows window sizes and display scaling.
 
 ---
 
@@ -136,7 +136,7 @@ For a sequential batch, preserve a clear completed/running/queued summary. A **w
 ### 6.3 Estimation contract
 
 - Use monotonic elapsed-time measurement for durations, not wall-clock timestamps vulnerable to clock changes.
-- Distinguish **model loading**, source acquisition, transcription, and artifact saving. Do not extrapolate one phase's speed into another.
+- Distinguish **model loading**, source acquisition, SSH transfer, transcription, and artifact saving. Do not extrapolate one phase's speed into another.
 - For local `faster-whisper`, progress may use completed segment time relative to audio duration. Smoothed processing throughput may estimate remaining transcription time.
 - Suppress early unstable numerical estimates until meaningful progress/time samples exist. Smooth updates and round appropriately rather than showing false second-level precision.
 - Refresh elapsed time on the UI clock even if no new segment has been delivered, without blocking the Qt event loop.
@@ -197,20 +197,13 @@ History is **not** a conversation compiler, semantic library, or document-manage
 
 ---
 
-## 10. R5 — Optional local GPU inference
+## 10. R5 — Optional local and SSH NVIDIA GPU inference
 
-GPU support is a **conditional capability**, not a justification to destabilize the working CPU engine.
-
-First run a bounded feasibility and benchmark task on the **actual installed hardware and drivers**. Establish device compatibility and compare representative recordings against the accepted CPU baseline for speed, fidelity, reliability, memory, and setup complexity. The backend is selected from evidence; examples include CTranslate2/CUDA where supported or an alternative Vulkan-capable local backend where practical.
-
-Proceed to implementation only if the measured benefit and maintainability justify it.
-
-If implemented:
-
-- Keep CPU as a fully functional fallback **selected explicitly or predictably**, with no hidden downgrade of model quality.
-- Detect/report unavailable devices, missing driver/runtime components, model-format requirements, and configuration errors intelligibly.
-- Preserve the existing queue, transcript, artifact, localization, Stop, and timing/ETA contracts.
-- Do not demand a discrete GPU for ordinary installation or use.
+- Expose three explicit modes. Local CPU uses CTranslate2 `int8`. Local NVIDIA GPU and Remote NVIDIA GPU use CTranslate2 CUDA `float16`. Preserve both Whisper model profiles in every mode.
+- Isolate the optional CUDA dependencies. Provision the Windows SSH host and models separately from normal jobs and existing GPU workloads. Run one on-demand worker per item using established SSH authentication and host-key verification.
+- Transfer media only in the selected remote mode. The remote worker uses transient storage and must release media and GPU resources on success, error, Stop, or loss of the client. Return recognized text over SSH and save artifacts on the primary computer. No cloud STT or permanent application service is involved.
+- Detect and report unavailable devices, missing runtime components or models, and SSH failures. Preserve the queue, transcript fidelity, artifact, localization, cancellation, timing and ETA contracts.
+- Validate CUDA on actual hardware with both profiles. Compare the CPU baseline and GPU on identical audio, measuring inference, SSH overhead, memory and fidelity.
 
 ---
 
@@ -243,7 +236,7 @@ Users decide whether a particular recording (especially recordings of other peop
 | R2 — CI & Stability | Planned | Windows automated verification and bounded reliability fixes |
 | R3 — Settings UX | Planned | Dedicated settings UI, no change to core user workflow |
 | R4 — History | Planned | Access existing transcript artifacts in-app without duplicating content |
-| R5 — GPU feasibility/integration | Conditional | Benchmark first; implementation only after acceptance of evidence |
+| R5 — NVIDIA GPU integration | Authorized | Optional local and on-demand Windows SSH CUDA; verify both profiles on NVIDIA hardware |
 | R6 — Cloud STT | Conditional | Provider choice, privacy and long-audio design gate before implementation |
 | R7 — Integration acceptance | Planned after approved changes | Revalidate local baseline, additional modes, localization, docs, privacy and Git hygiene |
 
@@ -257,7 +250,7 @@ Use scoped Codex tasks with an accepted starting SHA, bounded implementation, pr
 
 `BRIEF.md` states maintained product intent; `AGENTS.md` states agent/repository operating instructions; README files document actual usage. Keep English, Russian, Spanish and German README guides aligned when user-facing behavior changes.
 
-The previous `BRIEF.md` originated as a one-time MVP contract. This consolidated revision supersedes its outdated restrictions (such as the absolute ban on network input and the original Telegram-only framing) while preserving local privacy and faithful transcript principles. Public documentation must distinguish **offline local processing**, **online source acquisition**, and **opt-in future cloud recognition**.
+The previous `BRIEF.md` originated as a one-time MVP contract. This consolidated revision supersedes its outdated restrictions (such as the absolute ban on network input and the original Telegram-only framing) while preserving local privacy and faithful transcript principles. Public documentation must distinguish **offline local processing**, **online source acquisition**, **opt-in processing on a selected SSH host**, and **future cloud recognition**.
 
 Do not include private recordings, personal transcript content, credentials, downloaded models, or private runtime paths in public repository files.
 

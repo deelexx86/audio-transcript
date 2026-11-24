@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 from pathlib import Path
+from collections.abc import Callable
+from math import ceil
 from time import monotonic
 
-from PySide6.QtCore import QEvent, QItemSelectionModel, QThread, QTimer, Qt, QUrl
+from PySide6.QtCore import QEvent, QItemSelectionModel, QLocale, QThread, QTimer, Qt, QUrl
 from PySide6.QtGui import QCloseEvent, QDesktopServices, QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QFileDialog,
     QFormLayout,
     QFrame,
@@ -28,6 +32,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from audio_transcript.acceleration import ExecutionMode, valid_ssh_alias
 from audio_transcript.audio import SUPPORTED_EXTENSIONS, format_duration, probe_duration, scan_folder
 from audio_transcript.errors import ProcessingFailure
 from audio_transcript.i18n import LANGUAGES, language_manager
@@ -36,10 +41,11 @@ from audio_transcript.profiles import PROFILES, PROFILES_BY_KEY
 from audio_transcript.queueing import ACTIVE_STATUSES, AddResult, QueueItem, QueueManager, QueueStatus
 from audio_transcript.settings import AppSettings, SettingsStore
 from audio_transcript.worker import BatchWorker, WorkItem
+from audio_transcript.timing import TimingSnapshot
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, settings_store: SettingsStore | None = None) -> None:
+    def __init__(self, settings_store: SettingsStore | None = None, *, timing_clock: Callable[[], float] = monotonic) -> None:
         super().__init__()
         ensure_runtime_directories()
         self.settings_store = settings_store or SettingsStore()
@@ -58,6 +64,12 @@ class MainWindow(QMainWindow):
         self._batch_stopped = False
         self._thread: QThread | None = None
         self._worker: BatchWorker | None = None
+        self._timing_clock = timing_clock
+        self._timings: dict[str, TimingSnapshot] = {}
+        self._timing_id: str | None = None
+        self._timing_timer = QTimer(self)
+        self._timing_timer.setInterval(500)
+        self._timing_timer.timeout.connect(self._refresh_timing)
         self._build_ui()
         self.setMinimumHeight(max(560, self.minimumSizeHint().height()))
         self._restore_settings()
@@ -72,8 +84,9 @@ class MainWindow(QMainWindow):
 
         central = QWidget(self)
         outer = QVBoxLayout(central)
-        outer.setContentsMargins(22, 18, 22, 18)
-        outer.setSpacing(14)
+        outer.setContentsMargins(22, 14, 22, 14)
+        # Keep the added timing rows compact at ordinary Windows window sizes.
+        outer.setSpacing(6)
 
         header = QHBoxLayout()
         title_block = QVBoxLayout()
@@ -83,7 +96,7 @@ class MainWindow(QMainWindow):
         self.subtitle.setObjectName("subtitle")
         title_block.addWidget(title)
         title_block.addWidget(self.subtitle)
-        self.badge = QLabel("LOCAL TRANSCRIPTION")
+        self.badge = QLabel()
         self.badge.setObjectName("badge")
         self.badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         header.addLayout(title_block)
@@ -99,6 +112,9 @@ class MainWindow(QMainWindow):
         self.settings_toggle.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.settings_toggle.setMinimumWidth(150)
         preferences.addWidget(self.settings_toggle, 1)
+        self.settings_button = QPushButton()
+        self.settings_button.clicked.connect(self._open_execution_settings)
+        preferences.addWidget(self.settings_button)
         preferences.addSpacing(18)
         self.language_label = QLabel()
         preferences.addWidget(self.language_label)
@@ -135,7 +151,6 @@ class MainWindow(QMainWindow):
         youtube_layout.addWidget(QLabel("YouTube"))
         self.youtube_edit = QLineEdit()
         self.youtube_edit.setPlaceholderText("Paste a video link")
-        self.youtube_edit.setToolTip("Downloads audio when Transcribe starts; speech recognition stays local.")
         self.add_youtube_button = QPushButton("Add Link")
         youtube_layout.addWidget(self.youtube_edit, 1)
         youtube_layout.addWidget(self.add_youtube_button)
@@ -230,6 +245,30 @@ class MainWindow(QMainWindow):
         self.splitter.setStretchFactor(1, 2)
         outer.addWidget(self.splitter, 1)
 
+        timing_layout = QVBoxLayout()
+        timing_layout.setSpacing(2)
+        timing_header = QHBoxLayout()
+        self.timing_file_label = QLabel()
+        self.timing_file_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.media_label = QLabel()
+        timing_header.addWidget(self.timing_file_label, 1)
+        timing_header.addWidget(self.media_label)
+        timing_layout.addLayout(timing_header)
+        metrics = QHBoxLayout()
+        self.elapsed_label, self.elapsed_value = QLabel(), QLabel("—")
+        self.remaining_label, self.remaining_value = QLabel(), QLabel("—")
+        self.speed_label, self.speed_value = QLabel(), QLabel("—")
+        for label, value in ((self.elapsed_label, self.elapsed_value),
+                             (self.remaining_label, self.remaining_value),
+                             (self.speed_label, self.speed_value)):
+            column = QVBoxLayout()
+            column.setSpacing(0)
+            column.addWidget(label)
+            column.addWidget(value, 1)
+            metrics.addLayout(column, 1)
+        timing_layout.addLayout(metrics)
+        outer.addLayout(timing_layout)
+
         footer = QHBoxLayout()
         self.summary_label = QLabel("Queue is empty")
         self.summary_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
@@ -319,8 +358,16 @@ class MainWindow(QMainWindow):
 
     def _retranslate_ui(self) -> None:
         self.language_label.setText(self.tr("Interface language"))
+        self.elapsed_label.setText(self.tr("Elapsed"))
+        self.remaining_label.setText(self.tr("Remaining"))
+        self.speed_label.setText(self.tr("Speed"))
+        self.elapsed_label.setToolTip(self.tr("Current attempt, including preparation, downloads and saving."))
+        self.remaining_label.setToolTip(self.tr("Approximate transcription time only; excludes preparation, downloads and saving."))
+        self.speed_label.setToolTip(self.tr("Media time processed per inference time; excludes model loading and decoding."))
+        self._refresh_timing()
         self.subtitle.setText(self.tr('Faithful transcripts from local audio and video'))
-        self.badge.setText(self.tr('LOCAL TRANSCRIPTION'))
+        self._refresh_execution_mode()
+        self.settings_button.setText(self.tr("Acceleration…"))
         self.add_youtube_button.setText(self.tr('Add Link'))
         self.youtube_hint.setText(self.tr('YouTube needs internet. Results save to Workspace / transcripts.'))
         self.add_files_button.setText(self.tr('+ Files'))
@@ -339,7 +386,7 @@ class MainWindow(QMainWindow):
         self.transcribe_button.setText(self.tr('Transcribe'))
         self.speaker_edit.setPlaceholderText(self.tr('Optional default for newly added files'))
         self.youtube_edit.setPlaceholderText(self.tr('Paste a video link'))
-        self.youtube_edit.setToolTip(self.tr('Downloads audio when Transcribe starts; speech recognition stays local.'))
+        self.youtube_edit.setToolTip(self.tr("Downloads audio when Transcribe starts, then uses the selected execution mode."))
         self.retry_selected_button.setToolTip(self.tr('Retry only selected Error or Cancelled items.'))
         self.remove_completed_button.setToolTip(self.tr('Remove Done rows; keep audio and transcript files.'))
         self.table.horizontalHeader().setToolTip(self.tr('Click a column header to sort; click again to reverse.'))
@@ -366,12 +413,68 @@ class MainWindow(QMainWindow):
         self._show_selected()
         if self._status_message and self.statusBar().currentMessage():
             source, n, values = self._status_message
-            if source == "Using local model: {model}":
-                values = {"model": self.model_combo.currentText()}
+            if source == "Using {mode} · {model}":
+                values = {"mode": self._mode_label(self.settings.execution_mode), "model": self.model_combo.currentText()}
             timeout = max(1, int((self._status_deadline - monotonic()) * 1000)) if self._status_deadline else 0
             message = self._addition_message(values["result"]) if source is None else self.tr(source, None, n).format(**values)
             self.statusBar().showMessage(message, timeout)
         self.centralWidget().layout().activate()
+
+    def _mode_label(self, mode: str) -> str:
+        return {
+            ExecutionMode.CPU: self.tr("Local CPU"),
+            ExecutionMode.LOCAL_CUDA: self.tr("Local NVIDIA GPU"),
+            ExecutionMode.REMOTE_CUDA: self.tr("Remote NVIDIA GPU"),
+        }[mode]
+
+    def _refresh_execution_mode(self) -> None:
+        mode = self.settings.execution_mode
+        self.badge.setText(self._mode_label(mode))
+        self.badge.setToolTip(self.settings.ssh_alias if mode == ExecutionMode.REMOTE_CUDA else "")
+
+    def _open_execution_settings(self) -> None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle(self.tr("Acceleration"))
+        dialog.setMinimumWidth(420)
+        layout = QFormLayout(dialog)
+        mode = QComboBox()
+        for option in ExecutionMode:
+            mode.addItem(self._mode_label(option), option.value)
+        mode.setCurrentIndex(mode.findData(self.settings.execution_mode))
+        layout.addRow(self.tr("Execution mode"), mode)
+        alias = QLineEdit(self.settings.ssh_alias)
+        alias.setMaxLength(253)
+        layout.addRow(self.tr("SSH host alias"), alias)
+        notice = QLabel(self.tr(
+            "Remote mode sends source media over SSH to the selected host. "
+            "Transcript files are saved on this computer."
+        ))
+        notice.setWordWrap(True)
+        layout.addRow(notice)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        ok = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        ok.setText(self.tr("Save"))
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText(self.tr("Cancel"))
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addRow(buttons)
+
+        def refresh() -> None:
+            remote = mode.currentData() == ExecutionMode.REMOTE_CUDA
+            alias.setEnabled(remote)
+            notice.setVisible(remote)
+            ok.setEnabled(not remote or valid_ssh_alias(alias.text().strip()))
+
+        mode.currentIndexChanged.connect(refresh)
+        alias.textChanged.connect(refresh)
+        refresh()
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.settings.execution_mode = mode.currentData()
+            if valid_ssh_alias(alias.text().strip()):
+                self.settings.ssh_alias = alias.text().strip()
+            self._refresh_execution_mode()
+            self._save_settings()
+        dialog.deleteLater()
 
     def _toggle_settings(self, expanded: bool) -> None:
         self.settings_panel.setVisible(expanded)
@@ -390,6 +493,7 @@ class MainWindow(QMainWindow):
         super().resizeEvent(event)
         if hasattr(self, "_summary_text"):
             self._fit_summary()
+            self._refresh_timing()
 
     def _fit_summary(self) -> None:
         self.summary_label.setText(self.summary_label.fontMetrics().elidedText(
@@ -412,7 +516,7 @@ class MainWindow(QMainWindow):
         self._append_row(item)
         self.youtube_edit.clear()
         self.table.selectRow(self._row_by_id[item.id])
-        self._status("Video queued. Transcribe downloads audio, then transcribes locally.", 6000)
+        self._status("Video queued. Transcribe downloads audio before speech recognition.", 6000)
         self._update_actions()
 
     def _restore_settings(self) -> None:
@@ -437,6 +541,8 @@ class MainWindow(QMainWindow):
             splitter_sizes=self.splitter.sizes(),
             settings_expanded=self.settings_toggle.isChecked(),
             interface_language=self.languages.language,
+            execution_mode=self.settings.execution_mode,
+            ssh_alias=self.settings.ssh_alias,
         )
         try:
             self.settings_store.save(current)
@@ -612,6 +718,8 @@ class MainWindow(QMainWindow):
         if not selected:
             return
         self.queue.remove_ids(selected)
+        for item_id in selected:
+            self._timings.pop(item_id, None)
         for row in range(self.table.rowCount() - 1, -1, -1):
             cell = self.table.item(row, 0)
             if cell and str(cell.data(Qt.ItemDataRole.UserRole)) in selected:
@@ -625,6 +733,8 @@ class MainWindow(QMainWindow):
             return
         self._reset_sort_indicator()
         self.queue.clear()
+        self._timings.clear()
+        self._timing_id = None
         self.table.setRowCount(0)
         self._row_by_id.clear()
         self.preview.clear()
@@ -656,6 +766,10 @@ class MainWindow(QMainWindow):
     def _run_items(self, retryable: list[QueueItem]) -> None:
         if self._processing or not retryable:
             return
+        mode = ExecutionMode(self.settings.execution_mode)
+        if mode == ExecutionMode.REMOTE_CUDA and not valid_ssh_alias(self.settings.ssh_alias):
+            self._status("Set a valid SSH host alias in Acceleration settings.", 10000)
+            return
         profile = PROFILES_BY_KEY[str(self.model_combo.currentData())]
         output_mode = str(self.output_combo.currentData())
         self._processing = True
@@ -666,13 +780,16 @@ class MainWindow(QMainWindow):
             item.error = ""
             item.transcript = ""
             item.output_directory = None
+            item.processing_seconds = None
+            self._timings.pop(item.id, None)
             self._refresh_row(item)
         work = [WorkItem(item.id, item.source, item.speaker, item.duration, item.source_url) for item in retryable]
         self._thread = QThread(self)
-        self._worker = BatchWorker(work, profile, output_mode)
+        self._worker = BatchWorker(work, profile, output_mode, mode=mode, ssh_alias=self.settings.ssh_alias)
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
         self._worker.state_changed.connect(self._on_state_changed)
+        self._worker.timing_changed.connect(self._on_timing_changed)
         self._worker.item_completed.connect(self._on_item_completed)
         self._worker.item_failed.connect(self._on_item_failed)
         self._worker.finished.connect(self._on_worker_finished)
@@ -683,7 +800,7 @@ class MainWindow(QMainWindow):
         self._batch_stopped = False
         self._show_selected()
         self._update_actions()
-        self._status("Using local model: {model}", model=self.model_combo.currentText())
+        self._status("Using {mode} · {model}", mode=self._mode_label(mode), model=self.model_combo.currentText())
         self._thread.start()
 
     def _stop_batch(self) -> None:
@@ -706,6 +823,58 @@ class MainWindow(QMainWindow):
             self._show_selected()
         self._update_actions()
 
+    def _on_timing_changed(self, item_id: str, snapshot: TimingSnapshot) -> None:
+        item = self.queue.get(item_id)
+        if item is None:
+            return
+        self._timings[item_id] = snapshot
+        self._timing_id = item_id
+        if snapshot.finished_at is None:
+            self._timing_timer.start()
+        else:
+            self._timing_timer.stop()
+            item.processing_seconds = snapshot.view(self._timing_clock()).elapsed
+        self._refresh_timing()
+
+    def _refresh_timing(self) -> None:
+        item = self.queue.get(self._timing_id) if self._timing_id else None
+        snapshot = self._timings.get(self._timing_id) if item else None
+        if snapshot is None:
+            self.timing_file_label.setText(self.tr("Current file: —"))
+            self.timing_file_label.setToolTip("")
+            self.media_label.setText("")
+            for label in (self.elapsed_value, self.remaining_value, self.speed_value):
+                label.setText("—")
+            return
+        view = snapshot.view(self._timing_clock())
+        template = self.tr("Current file: {name} · {phase}")
+        phase = self._status_text(QueueStatus(snapshot.phase))
+        description = template.format(name=item.display_name, phase=phase)
+        metrics = self.timing_file_label.fontMetrics()
+        name_width = max(0, self.timing_file_label.width() - metrics.horizontalAdvance(
+            template.format(name="", phase=phase)))
+        name = metrics.elidedText(item.display_name, Qt.TextElideMode.ElideRight, name_width)
+        self.timing_file_label.setText(template.format(name=name, phase=phase))
+        self.timing_file_label.setToolTip(description)
+        self.elapsed_value.setText(format_duration(int(view.elapsed)))
+        self.media_label.setText(self.tr("Media: {processed} / {duration}").format(
+            processed=format_duration(snapshot.processed), duration=format_duration(snapshot.duration)))
+        if view.remaining is None:
+            self.remaining_value.setText(self.tr("Estimating…") if view.eta_state == "estimating" else self.tr("Unavailable"))
+        elif view.remaining < 60:
+            self.remaining_value.setText(self.tr("≈ <1 min"))
+        else:
+            step = 5 if view.remaining >= 600 else 1
+            minutes = ceil(view.remaining / (60 * step)) * step
+            self.remaining_value.setText(self.tr("≈ {minutes} min").format(minutes=minutes))
+        if view.speed is None:
+            self.speed_value.setText(self.tr("Unavailable"))
+        else:
+            locale = QLocale(self.languages.language)
+            speed = ("<" + locale.toString(0.1, "f", 1) if view.speed < 0.05
+                     else locale.toString(view.speed, "f", 1))
+            self.speed_value.setText(self.tr("{speed}× realtime").format(speed=speed))
+
     def _on_item_completed(self, item_id: str, payload: dict[str, object]) -> None:
         item = self.queue.get(item_id)
         if not item:
@@ -718,6 +887,8 @@ class MainWindow(QMainWindow):
         item.duration = float(payload["duration"]) if payload["duration"] is not None else item.duration
         item.model_name = str(payload["model_name"])
         item.output_directory = Path(payload["output_directory"])
+        if "processing_seconds" in payload:
+            item.processing_seconds = float(payload["processing_seconds"])
         self._refresh_row(item)
         if self._selected_item() is item:
             self._show_selected()
@@ -757,6 +928,7 @@ class MainWindow(QMainWindow):
             QueueStatus.QUEUED: self.tr("Queued"),
             QueueStatus.PREPARING: self.tr("Preparing"),
             QueueStatus.DOWNLOADING: self.tr("Downloading"),
+            QueueStatus.UPLOADING: self.tr("Uploading over SSH"),
             QueueStatus.RETRYING: self.tr("Waiting to retry"),
             QueueStatus.TRANSCRIBING: self.tr("Transcribing"),
             QueueStatus.SAVING: self.tr("Saving"),
@@ -789,6 +961,8 @@ class MainWindow(QMainWindow):
 
     def _show_selected(self) -> None:
         item = self._selected_item()
+        if not self._processing:
+            self._timing_id = item.id if item and item.id in self._timings else None
         if not item:
             self.preview_title.setText(self.tr("Transcript preview"))
             self.preview.clear()
@@ -812,6 +986,11 @@ class MainWindow(QMainWindow):
         explanations = {
             "transcription": self.tr("Transcription failed. Check that the file contains a readable audio track and that the local model is installed."),
             "model_missing": self.tr("The selected model is not installed. Run bootstrap_models.bat while online, then try again."),
+            "local_cuda": self.tr("Local GPU processing failed. Check the audio, NVIDIA driver and CUDA setup in README."),
+            "remote_cuda": self.tr("GPU processing failed on the SSH host. Check the audio and the host's CUDA setup."),
+            "remote_connection": self.tr("The remote job failed. Check the SSH alias, host key, connection and worker setup."),
+            "remote_model_missing": self.tr("The selected model is missing on the SSH host. Rerun the remote GPU setup."),
+            "remote_media": self.tr("The SSH host could not decode this file. Check that it contains a readable audio track."),
             "bot_check": self.tr("YouTube requested an anti-bot check. The automatic retry failed. Try Retry Selected later; browser playback may still work."),
             "access_restricted": self.tr("YouTube requires access permissions. This app does not use accounts or browser cookies."),
             "unavailable": self.tr("This YouTube video is unavailable or restricted in your location."),
@@ -849,6 +1028,7 @@ class MainWindow(QMainWindow):
             self.model_combo,
             self.speaker_edit,
             self.output_combo,
+            self.settings_button,
             self.youtube_edit,
             self.add_youtube_button,
         ):
@@ -898,6 +1078,7 @@ class MainWindow(QMainWindow):
         active = next((item for item in self.queue.items if item.status in ACTIVE_STATUSES), None)
         self.progress_bar.setRange(0, 0 if active and active.progress < 0 else 100)
         self.progress_bar.setValue(active.progress if active else (100 if has_items and not retryable else 0))
+        self._refresh_timing()
 
     def closeEvent(self, event: QCloseEvent) -> None:
         if self._processing:

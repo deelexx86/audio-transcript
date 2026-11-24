@@ -4,7 +4,7 @@
 
 Audio Transcript ist ein kleines Windows-11-Desktopprogramm für originalgetreue Transkripte von Telegram-Sprachnachrichten, Audiodateien und Tonspuren lokaler Videos. Es bietet eine sequenzielle Warteschlange, Vorschau, Zwischenablage sowie TXT- und Markdown-Dateien.
 
-Die Spracherkennung läuft lokal mit `faster-whisper` und CTranslate2. Nach dem Herunterladen der Abhängigkeiten und Modelle funktioniert die Verarbeitung lokaler Dateien offline. Audio und Transkripte bleiben auf diesem Computer; die App verwendet keine Transkriptions-API, Konten, Telemetrie, Cloud-Speicherung, Datenbank oder Server.
+Die Spracherkennung verwendet `faster-whisper` und CTranslate2. Nach der Einrichtung funktionieren lokale CPU und lokale NVIDIA-GPU offline. Der optionale SSH-Modus sendet Medien an einen ausgewählten Windows-Rechner. Die Transkriptdateien werden auf diesem Rechner gespeichert.
 
 ## Voraussetzungen
 
@@ -41,6 +41,15 @@ Wählen Sie oberhalb der Einstellungen **Sprache der Oberfläche**: English, Р�
 
 Die Auswahl betrifft nur die Oberfläche. Die Sprache der Aufnahme wird automatisch erkannt; Transkripttext, Dateinamen und Markdown-Metadaten bleiben erhalten. Technische Fehlerdetails behalten ihren ursprünglichen Wortlaut.
 
+## NVIDIA-Beschleunigung
+
+Wählen Sie unter **Beschleunigung…** zwischen **Lokale CPU**, **Lokale NVIDIA-GPU** und **Entfernte NVIDIA-GPU**. Beide Modellprofile stehen in jedem Modus zur Verfügung. Der Modus wird im Hauptfenster angezeigt und gespeichert. Bei einem Fehler bleibt der gewählte Modus aktiv.
+
+- Die **lokale NVIDIA-GPU** benötigt Windows x64, eine NVIDIA-GPU mit float16-Unterstützung, einen mit CUDA 12.8 kompatiblen Treiber und die lokalen Modelle. Führen Sie `.\.venv\Scripts\python.exe scripts\setup_gpu.py` einmal im Repository aus. Die CUDA-Bibliotheken werden in der Projektumgebung installiert.
+- Die **entfernte NVIDIA-GPU** benötigt Windows x64, Python 3.11, einen NVIDIA-Treiber und Windows OpenSSH mit der Standard-Shell. Richten Sie den SSH-Schlüsselzugang ein und prüfen Sie den Hostschlüssel. Führen Sie `.\.venv\Scripts\python.exe scripts\setup_gpu.py --remote gpu-tts` einmal aus und ersetzen Sie bei Bedarf `gpu-tts` durch Ihren SSH-Alias. Worker, CUDA-Bibliotheken und beide Modelle werden isoliert unter `%LOCALAPPDATA%\AudioTranscriptGpu` installiert. Derselbe Befehl aktualisiert den Worker oder installiert fehlende Modelle.
+
+Wählen Sie denselben SSH-Alias in der App. SSH läuft ohne Rückfragen und prüft den Hostschlüssel. Während des Sendens erscheint **Übertragung per SSH**. Stoppen beendet die SSH-Sitzung des Auftrags. Bei einem Verbindungsabbruch endet der Worker nach etwa 45 Sekunden ohne Daten oder Lebenszeichen. Die temporäre Datei wird beim Schließen gelöscht. Der GPU-Speicher wird nach jedem Auftrag freigegeben.
+
 ## Arbeitsablauf
 
 1. Öffnen Sie bei Bedarf **Einstellungen**. **Genauigkeit** bevorzugt höchste Texttreue, **Schnell** verkürzt die CPU-Verarbeitungszeit.
@@ -55,9 +64,15 @@ Die Auswahl betrifft nur die Oberfläche. Die Sprache der Aufnahme wird automati
 
 **Einstellungen ausblenden** schafft Platz für Warteschlange und Vorschau. Die Schaltfläche zeigt Modell und Ausgabeziel; ihr Tooltip enthält den vollständigen Text. Der Zustand wird lokal gespeichert. Sortieren ist eine einmalige Aktion: neue Dateien kommen ans Ende, manuelles Verschieben ersetzt die vorherige Sortierung. Unbekannte Dauern stehen bei aufsteigender Sortierung zuerst. Warteschlange und Hinzufügezeiten werden nach einem Neustart nicht wiederhergestellt.
 
+## Verarbeitungszeit, Geschwindigkeit und Restzeit
+
+Unter der Vorschau zeigt ein eigener Bereich die aktuelle Datei, Phase, verarbeitete Medienposition, **Vergangen**, **Verbleibend** und **Geschwindigkeit**, getrennt von den Stapelzählern. Die monotone Uhr aktualisiert sich jede halbe Sekunde, auch beim Modellladen, Dekodieren, Herunterladen, Warten auf einen erneuten Versuch und Speichern. Nach Stop läuft sie bis zum sicheren Abbruch weiter. Done, Error und Cancelled behalten die gemessene Dauer; die Auswahl einer abgeschlossenen Zeile zeigt deren Zeit. Retry Selected beginnt neue Messungen. Die Dauer bleibt im Ergebniszustand der Sitzung verfügbar; GPU-Aufträge vermerken den Ausführungsmodus außerdem in Markdown.
+
+Die Geschwindigkeit ist verarbeitete Audiodauer geteilt durch tatsächliche Inferenzzeit, in **× Echtzeit**; Modellladen, Dekodieren, Downloads und Speichern sind ausgeschlossen. Die Restzeit schätzt nur die Transkription, weder den Stapel noch Downloads. Erforderlich sind mindestens drei Fortschrittsbeobachtungen im Abstand von einer Sekunde, fünf Sekunden Inferenz und fünf Sekunden verarbeitete Medien. Gemeinsam gelieferte Segmente werden zusammengefasst, der Durchsatz geglättet und die Zeit auf volle Minuten aufgerundet (Fünf-Minuten-Schritte ab zehn Minuten). Anfangs erscheint **Wird geschätzt…**; bei unbekannter Dauer, anderen Phasen oder stockendem Fortschritt **Nicht verfügbar**. Schätzungen verfallen nach 30–120 Sekunden je nach beobachteten Intervallen; zur Wiederaufnahme sind neue Beobachtungen nötig. Bei kurzen Aufnahmen oder langsamen Inferenzfenstern kann deshalb eine Schätzung ausbleiben.
+
 ## YouTube-Videos
 
-**Link hinzufügen** prüft und erfasst ein Video ohne Kontakt zu YouTube. **Transkribieren** lädt den Ton herunter und verarbeitet ihn mit dem ausgewählten lokalen Whisper-Modell. Videos und lokale Dateien teilen dieselbe sequenzielle Warteschlange. Download- und Transkriptionsfortschritt werden getrennt dargestellt. Stoppen wirkt am nächsten sicheren Abbruchpunkt; eine laufende Netzwerkanfrage kann bis zu ihrem Timeout dauern.
+**Link hinzufügen** prüft und erfasst ein Video ohne Kontakt zu YouTube. **Transkribieren** lädt den Ton herunter und verarbeitet ihn mit dem ausgewählten Whisper-Modell im aktiven Modus. Videos und lokale Dateien teilen dieselbe sequenzielle Warteschlange. Download- und Transkriptionsfortschritt werden getrennt dargestellt. Stoppen wirkt am nächsten sicheren Abbruchpunkt; eine laufende Netzwerkanfrage kann bis zu ihrem Timeout dauern.
 
 Bei einer Bot-Prüfung erscheint **Warten auf Wiederholung** für 10 Sekunden. Danach folgt genau ein weiterer Versuch mit einer neuen Gast-Sitzung des Downloaders. Stoppen bricht auch die Wartezeit ab. Scheitert der zweite Versuch, bleibt **Auswahl wiederholen** für später verfügbar; weitere Einträge laufen weiter. Andere Fehlerkategorien lösen diesen Zusatzversuch nicht aus; begrenzte Verbindungs- und Fragmentwiederholungen des Downloaders bleiben bestehen.
 
@@ -67,7 +82,7 @@ Unterstützt werden `youtube.com/watch?v=...`, `youtu.be/...`, Shorts und eingeb
 
 `yt-dlp` lädt Audio in einen temporären Ordner `config/youtube-*`, der nach Erfolg, Fehler oder Abbruch entfernt wird. Erzwungenes Prozessende oder Stromausfall kann den Ordner zurücklassen. Es entsteht kein dauerhaftes Video-/Audioarchiv; lokale Quelldateien werden nicht entfernt.
 
-YouTube-Ergebnisse liegen immer unter `transcripts/YYYY/YYYY-MM-DD/youtube-VIDEO_ID/`, auch wenn für lokale Dateien die Ausgabe neben der Quelle gewählt ist. Bei Namenskollisionen folgt eine Nummer. Markdown enthält Video-URL und Titel; TXT ausschließlich den Text des lokalen Modells. Der Titel erscheint in der fertigen Zeile. Wiederholen lädt das Audio erneut herunter.
+YouTube-Ergebnisse liegen immer unter `transcripts/YYYY/YYYY-MM-DD/youtube-VIDEO_ID/`, auch wenn für lokale Dateien die Ausgabe neben der Quelle gewählt ist. Bei Namenskollisionen folgt eine Nummer. Markdown enthält Video-URL und Titel; TXT ausschließlich den Text des Modells. Der Titel erscheint in der fertigen Zeile. Wiederholen lädt das Audio erneut herunter.
 
 `yt-dlp[default]` enthält passende JavaScript-Skripte zur Lösung von Prüfungen. Ein unterstütztes Node.js oder Deno ist erforderlich; siehe die [offizielle yt-dlp-Anleitung](https://github.com/yt-dlp/yt-dlp/wiki/EJS). Eine separate FFmpeg-Installation ist nicht nötig: PyAV dekodiert das Audio. Downloader-Komponenten und Modelle werden während des Betriebs nicht automatisch installiert.
 
@@ -89,7 +104,7 @@ Audio: `.ogg` (einschließlich Telegram Ogg/Opus), `.mp3`, `.m4a`, `.wav`, `.web
 
 Video: `.mp4`, `.m4v`, `.mkv`, `.mov`, `.avi`, `.wmv`, `.asf`, `.flv`, `.webm`, `.mpg`, `.mpeg`, `.ts`, `.mts`, `.m2ts`, `.vob`, `.ogv`, `.3gp`, `.3g2`. Hinzufügen erfolgt über die üblichen Aktionen. PyAV dekodiert die erste Audiospur direkt; Audioexport und separate FFmpeg-Installation entfallen. Bilder und Untertitel werden nicht verarbeitet. Die tatsächliche Unterstützung hängt von einer lesbaren, unverschlüsselten, dekodierbaren Audiospur ab. Videos ohne Ton oder mit unlesbarer Spur verursachen einen Fehler pro Datei; die Warteschlange läuft weiter.
 
-Quelldateien können überall im lokalen Dateisystem bleiben: sie werden nie kopiert, verschoben, umbenannt oder gelöscht. Videos nutzen dieselben Ausgabeziele, den Überschreibschutz, TXT/Markdown, Vorschau und Zwischenablage wie Audio.
+Quelldateien können überall im lokalen Dateisystem bleiben: sie werden nie verschoben, umbenannt oder gelöscht. Videos nutzen dieselben Ausgabeziele, den Überschreibschutz, TXT/Markdown, Vorschau und Zwischenablage wie Audio.
 
 - `inbox\`: optionaler Eingangsordner; keine Unterordnersuche.
 - `models\`: die beiden lokalen Modelle.
@@ -108,7 +123,7 @@ Neben der Quelle wird `source-name_transcript\` angelegt. Bestehende Ordner werd
 
 ## Datenschutz
 
-PyAV dekodiert lokal; das Whisper-Modell im Projekt erkennt Sprache auf der CPU. Lokale Dateien verursachen keine beabsichtigten Netzwerkanfragen. YouTube-Downloads kontaktieren YouTube und seine Medienserver; Erkennung bleibt lokal, Transkripte werden nicht hochgeladen. Es erfolgt keine Zusammenfassung oder semantische Überarbeitung und keine dauerhafte Kopie des Quellaudios. Die zuvor ausdrücklich gewünschte YouTube-Funktion erweitert die ursprüngliche Offline-Eingabegrenze aus `BRIEF.md`; diese Datei bleibt unverändert. `inbox\`, `transcripts\`, `models\`, `.venv\` und `config\settings.json` sind private Laufzeitdaten, die durch Git-Regeln geschützt werden.
+PyAV dekodiert und Whisper erkennt Sprache auf dem unter **Beschleunigung…** gewählten Computer. In lokalen Modi bleiben die Quelldateien hier. Im Remotemodus wird die vollständige Mediendatei einschließlich Video oder das heruntergeladene YouTube-Audio per SSH übertragen. Der Text kommt zurück und die Transkriptdateien werden hier gespeichert. YouTube-Downloads kontaktieren YouTube und seine Medienserver. Die App fasst Inhalte weder zusammen noch schreibt sie um. Git-Regeln schützen private Laufzeitdaten in `inbox\`, `transcripts\`, `models\`, `.venv\` und `config\settings.json`.
 
 ## Prüfungen
 
