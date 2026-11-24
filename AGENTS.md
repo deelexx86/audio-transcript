@@ -54,13 +54,13 @@ Keep the implementation within the scope defined by `BRIEF.md`.
 
 In particular, preserve these invariants:
 
-- local speech-to-text inference;
+- speech-to-text inference on this computer or the explicitly selected SSH GPU host;
 - no external transcription API;
 - no backend/server;
 - no database;
 - no accounts or authentication;
 - no telemetry;
-- source audio and generated transcripts remain local;
+- source media is transferred only for explicitly selected SSH execution, with transient host-side media and final artifacts on the desktop;
 - transcript fidelity takes precedence over automatic rewriting or interpretation;
 - the application remains a focused transcription utility.
 
@@ -186,7 +186,9 @@ Do not install unrelated global tooling when a repository-local solution is suff
 
 Model files must remain local and must not be committed.
 
-Use the repository-local model storage defined by `BRIEF.md`.
+Use the repository-local `models\` directory for local Whisper checkpoints and `D:\models\audio-transcript` for remote weights and their caches. Preserve unrelated content in the shared remote root. Pin managed checkpoint revisions and verify downloads. Keep ASR dependencies isolated from other host workloads.
+
+GPU is the primary target. Local CPU is an explicit legacy mode for the established Whisper checkpoints. Maintain separate model installation, runtime and device checks. Keep unavailable candidates visible in the model catalog.
 
 Do not make normal transcription depend on an implicit network download.
 
@@ -209,6 +211,8 @@ A failure in one queue item should not corrupt completed work or unnecessarily t
 Generated final artifacts must not be silently overwritten.
 
 Temporary or partially written artifacts should not be presented as successful final output.
+
+Preserve plain TXT and Markdown. Export native anonymous speaker labels with timestamps where the model produces them. Preserve full-recording context where supported and surface duration or generation-limit failures. Never identify a speaker or manufacture timing.
 
 Resource cleanup must be handled deliberately, especially for:
 

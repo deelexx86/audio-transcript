@@ -104,6 +104,10 @@
         <translation>Модель</translation>
     </message>
     <message>
+        <source>Model Manager</source>
+        <translation>Управление моделями</translation>
+    </message>
+    <message>
         <source>Speaker</source>
         <translation>Говорящий</translation>
     </message>
@@ -150,6 +154,10 @@
     <message>
         <source>Interface language; speech language is detected automatically.</source>
         <translation>Язык интерфейса; язык речи определяется автоматически.</translation>
+    </message>
+    <message>
+        <source>The selected model is missing or incomplete on the SSH host. Open Model Manager.</source>
+        <translation>Выбранная модель отсутствует или загружена не полностью на SSH-хосте. Откройте управление моделями.</translation>
     </message>
     <message>
         <source>Interface language</source>
@@ -304,6 +312,10 @@
         <translation>Укажите допустимый псевдоним SSH-хоста в настройках ускорения.</translation>
     </message>
     <message>
+        <source>Choose a model ready for this execution mode in Model Manager.</source>
+        <translation>Выберите в управлении моделями модель, готовую для этого режима.</translation>
+    </message>
+    <message>
         <source>Using {mode} · {model}</source>
         <translation>Обработка в режиме «{mode}» · {model}</translation>
     </message>
@@ -422,7 +434,7 @@ Status: {status}</source>
         <translation>Сбой обработки на локальном GPU. Проверьте аудио, драйвер NVIDIA и настройку CUDA по README.</translation>
     </message>
     <message>
-        <source>GPU processing failed on the SSH host. Check the audio and the host&apos;s CUDA setup.</source>
+        <source>GPU processing failed on the SSH host. Check the audio and the host's CUDA setup.</source>
         <translation>Сбой обработки на GPU хоста SSH. Проверьте аудио и настройку CUDA на хосте.</translation>
     </message>
     <message>
@@ -431,7 +443,7 @@ Status: {status}</source>
     </message>
     <message>
         <source>The selected model is missing on the SSH host. Rerun the remote GPU setup.</source>
-        <translation>Выбранная модель отсутствует на SSH-хосте. Повторите настройку удалённого GPU.</translation>
+        <translation type="vanished">Выбранная модель отсутствует на SSH-хосте. Повторите настройку удалённого GPU.</translation>
     </message>
     <message>
         <source>The SSH host could not decode this file. Check that it contains a readable audio track.</source>
@@ -532,6 +544,257 @@ Technical details:
     <message>
         <source>Queue is empty</source>
         <translation>Очередь пуста</translation>
+    </message>
+</context>
+<context>
+    <name>ModelManager</name>
+    <message>
+        <source>Model Manager</source>
+        <translation>Управление моделями</translation>
+    </message>
+    <message>
+        <source>Refresh</source>
+        <translation>Обновить</translation>
+    </message>
+    <message>
+        <source>Download</source>
+        <translation>Скачать</translation>
+    </message>
+    <message>
+        <source>Remove files</source>
+        <translation>Удалить файлы</translation>
+    </message>
+    <message>
+        <source>Use selected model</source>
+        <translation>Выбрать модель</translation>
+    </message>
+    <message>
+        <source>Cancel operation</source>
+        <translation>Отменить операцию</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>Закрыть</translation>
+    </message>
+    <message>
+        <source>Local CPU</source>
+        <translation>Локальный CPU</translation>
+    </message>
+    <message>
+        <source>Local NVIDIA GPU</source>
+        <translation>Локальный NVIDIA GPU</translation>
+    </message>
+    <message>
+        <source>Remote NVIDIA GPU</source>
+        <translation>Удалённый NVIDIA GPU</translation>
+    </message>
+    <message>
+        <source>Speech recognition</source>
+        <translation>Распознавание речи</translation>
+    </message>
+    <message>
+        <source>Anonymous speaker labels</source>
+        <translation>Анонимные метки говорящих</translation>
+    </message>
+    <message>
+        <source>Native timestamps</source>
+        <translation>Нативные временные метки</translation>
+    </message>
+    <message>
+        <source>Recorded-file streaming</source>
+        <translation>Потоковая обработка записей</translation>
+    </message>
+    <message>
+        <source>Russian speech</source>
+        <translation>Русская речь</translation>
+    </message>
+    <message>
+        <source>Multilingual speech</source>
+        <translation>Многоязычная речь</translation>
+    </message>
+    <message>
+        <source>Unknown</source>
+        <translation>Неизвестно</translation>
+    </message>
+    <message>
+        <source>Installed · {size:.2f} GiB</source>
+        <translation>Установлено · {size:.2f} ГиБ</translation>
+    </message>
+    <message>
+        <source>Partial files</source>
+        <translation>Неполные файлы</translation>
+    </message>
+    <message>
+        <source>Missing</source>
+        <translation>Отсутствует</translation>
+    </message>
+    <message>
+        <source>CUDA/runtime preflight passed</source>
+        <translation>Среда и CUDA прошли проверку</translation>
+    </message>
+    <message>
+        <source>Runtime available</source>
+        <translation>Среда доступна</translation>
+    </message>
+    <message>
+        <source>Runtime unavailable</source>
+        <translation>Среда недоступна</translation>
+    </message>
+    <message>
+        <source>No compatible CUDA device detected</source>
+        <translation>Совместимое устройство CUDA не обнаружено</translation>
+    </message>
+    <message>
+        <source>Unavailable in this mode</source>
+        <translation>Недоступно в этом режиме</translation>
+    </message>
+    <message>
+        <source>Ready for transcription</source>
+        <translation>Готова к транскрипции</translation>
+    </message>
+    <message>
+        <source>Unavailable for transcription</source>
+        <translation>Транскрипция недоступна</translation>
+    </message>
+    <message>
+        <source>Checkpoint size · {size:.2f} GiB</source>
+        <translation>Размер весов · {size:.2f} ГиБ</translation>
+    </message>
+    <message>
+        <source>Full-size multilingual Whisper checkpoint.</source>
+        <translation>Полноразмерная многоязычная модель Whisper.</translation>
+    </message>
+    <message>
+        <source>Whisper checkpoint with a smaller decoder.</source>
+        <translation>Модель Whisper с уменьшенным декодером.</translation>
+    </message>
+    <message>
+        <source>Compact multilingual ASR with automatic language identification.</source>
+        <translation>Компактная многоязычная модель с автоопределением языка.</translation>
+    </message>
+    <message>
+        <source>Larger Qwen ASR checkpoint with automatic language identification.</source>
+        <translation>Увеличенная модель Qwen ASR с автоопределением языка.</translation>
+    </message>
+    <message>
+        <source>Russian RNN-T with punctuation and text normalization.</source>
+        <translation>Русскоязычная RNN-T с пунктуацией и нормализацией текста.</translation>
+    </message>
+    <message>
+        <source>Large multilingual GigaAM checkpoint with a CTC decoder.</source>
+        <translation>Большая многоязычная модель GigaAM с CTC-декодером.</translation>
+    </message>
+    <message>
+        <source>Multilingual FastConformer with a duration-aware decoder.</source>
+        <translation>Многоязычный FastConformer с декодером, учитывающим длительность.</translation>
+    </message>
+    <message>
+        <source>Single-pass transcription with timestamped speaker turns.</source>
+        <translation>Однопроходная транскрипция с временными метками реплик.</translation>
+    </message>
+    <message>
+        <source>Compact stateful decoder for speaker-attributed recorded audio.</source>
+        <translation>Компактный декодер с сохранением состояния и разметкой говорящих.</translation>
+    </message>
+    <message>
+        <source>Larger stateful decoder for speaker-attributed recorded audio.</source>
+        <translation>Увеличенный декодер с сохранением состояния и разметкой говорящих.</translation>
+    </message>
+    <message>
+        <source>Long-form ASR with anonymous, timestamped speaker segments.</source>
+        <translation>Распознавание длинных записей с анонимными метками говорящих и времени.</translation>
+    </message>
+    <message>
+        <source>Expert weights staged from host storage for CUDA inference.</source>
+        <translation>Веса экспертов подгружаются с диска хоста для обработки на CUDA.</translation>
+    </message>
+    <message>
+        <source>Capabilities</source>
+        <translation>Возможности</translation>
+    </message>
+    <message>
+        <source>Execution modes</source>
+        <translation>Режимы выполнения</translation>
+    </message>
+    <message>
+        <source>Weights</source>
+        <translation>Веса</translation>
+    </message>
+    <message>
+        <source>Runtime and device</source>
+        <translation>Среда и устройство</translation>
+    </message>
+    <message>
+        <source>Selection</source>
+        <translation>Выбор</translation>
+    </message>
+    <message>
+        <source>Upstream</source>
+        <translation>Источник</translation>
+    </message>
+    <message>
+        <source>Checkpoint source</source>
+        <translation>Источник весов</translation>
+    </message>
+    <message>
+        <source>License</source>
+        <translation>Лицензия</translation>
+    </message>
+    <message>
+        <source>Runtime</source>
+        <translation>Среда выполнения</translation>
+    </message>
+    <message>
+        <source>Precision</source>
+        <translation>Точность вычислений</translation>
+    </message>
+    <message>
+        <source>Application duration limit · {minutes} minutes</source>
+        <translation>Лимит длительности в приложении · {minutes} мин</translation>
+    </message>
+    <message>
+        <source>SSH worker connected</source>
+        <translation>Подключено по SSH</translation>
+    </message>
+    <message>
+        <source>SSH worker unavailable</source>
+        <translation>Модуль SSH недоступен</translation>
+    </message>
+    <message>
+        <source>SSH status unknown</source>
+        <translation>Статус SSH неизвестен</translation>
+    </message>
+    <message>
+        <source>Checking model files and runtime…</source>
+        <translation>Проверка файлов и среды…</translation>
+    </message>
+    <message>
+        <source>Downloading checkpoint…</source>
+        <translation>Скачивание весов…</translation>
+    </message>
+    <message>
+        <source>Removing model files…</source>
+        <translation>Удаление файлов модели…</translation>
+    </message>
+    <message>
+        <source>Remove the managed checkpoint files for {model}?</source>
+        <translation>Удалить управляемые файлы весов модели {model}?</translation>
+    </message>
+    <message>
+        <source>Model status updated.</source>
+        <translation>Статус модели обновлён.</translation>
+    </message>
+    <message>
+        <source>Model operation failed. Refresh to check the current status.</source>
+        <translation>Операция с моделью завершилась ошибкой. Обновите статус.</translation>
+    </message>
+    <message>
+        <source>Operation cancelled. Refresh to check the current status.</source>
+        <translation>Операция отменена. Обновите статус.</translation>
+    </message>
+    <message>
+        <source>Cancelling…</source>
+        <translation>Отмена…</translation>
     </message>
 </context>
 </TS>

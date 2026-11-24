@@ -104,6 +104,10 @@
         <translation>Model</translation>
     </message>
     <message>
+        <source>Model Manager</source>
+        <translation>Model Manager</translation>
+    </message>
+    <message>
         <source>Speaker</source>
         <translation>Speaker</translation>
     </message>
@@ -150,6 +154,10 @@
     <message>
         <source>Interface language; speech language is detected automatically.</source>
         <translation>Interface language; speech language is detected automatically.</translation>
+    </message>
+    <message>
+        <source>The selected model is missing or incomplete on the SSH host. Open Model Manager.</source>
+        <translation>The selected model is missing or incomplete on the SSH host. Open Model Manager.</translation>
     </message>
     <message>
         <source>Interface language</source>
@@ -300,6 +308,10 @@
         <translation>Set a valid SSH host alias in Acceleration settings.</translation>
     </message>
     <message>
+        <source>Choose a model ready for this execution mode in Model Manager.</source>
+        <translation>Choose a model ready for this execution mode in Model Manager.</translation>
+    </message>
+    <message>
         <source>Using {mode} · {model}</source>
         <translation>Using {mode} · {model}</translation>
     </message>
@@ -418,8 +430,8 @@ Status: {status}</translation>
         <translation>Local GPU processing failed. Check the audio, NVIDIA driver and CUDA setup in README.</translation>
     </message>
     <message>
-        <source>GPU processing failed on the SSH host. Check the audio and the host&apos;s CUDA setup.</source>
-        <translation>GPU processing failed on the SSH host. Check the audio and the host&apos;s CUDA setup.</translation>
+        <source>GPU processing failed on the SSH host. Check the audio and the host's CUDA setup.</source>
+        <translation>GPU processing failed on the SSH host. Check the audio and the host's CUDA setup.</translation>
     </message>
     <message>
         <source>The remote job failed. Check the SSH alias, host key, connection and worker setup.</source>
@@ -427,7 +439,7 @@ Status: {status}</translation>
     </message>
     <message>
         <source>The selected model is missing on the SSH host. Rerun the remote GPU setup.</source>
-        <translation>The selected model is missing on the SSH host. Rerun the remote GPU setup.</translation>
+        <translation type="vanished">The selected model is missing on the SSH host. Rerun the remote GPU setup.</translation>
     </message>
     <message>
         <source>The SSH host could not decode this file. Check that it contains a readable audio track.</source>
@@ -523,6 +535,257 @@ Technical details:
     <message>
         <source>Queue is empty</source>
         <translation>Queue is empty</translation>
+    </message>
+</context>
+<context>
+    <name>ModelManager</name>
+    <message>
+        <source>Model Manager</source>
+        <translation>Model Manager</translation>
+    </message>
+    <message>
+        <source>Refresh</source>
+        <translation>Refresh</translation>
+    </message>
+    <message>
+        <source>Download</source>
+        <translation>Download</translation>
+    </message>
+    <message>
+        <source>Remove files</source>
+        <translation>Remove files</translation>
+    </message>
+    <message>
+        <source>Use selected model</source>
+        <translation>Use selected model</translation>
+    </message>
+    <message>
+        <source>Cancel operation</source>
+        <translation>Cancel operation</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>Close</translation>
+    </message>
+    <message>
+        <source>Local CPU</source>
+        <translation>Local CPU</translation>
+    </message>
+    <message>
+        <source>Local NVIDIA GPU</source>
+        <translation>Local NVIDIA GPU</translation>
+    </message>
+    <message>
+        <source>Remote NVIDIA GPU</source>
+        <translation>Remote NVIDIA GPU</translation>
+    </message>
+    <message>
+        <source>Speech recognition</source>
+        <translation>Speech recognition</translation>
+    </message>
+    <message>
+        <source>Anonymous speaker labels</source>
+        <translation>Anonymous speaker labels</translation>
+    </message>
+    <message>
+        <source>Native timestamps</source>
+        <translation>Native timestamps</translation>
+    </message>
+    <message>
+        <source>Recorded-file streaming</source>
+        <translation>Recorded-file streaming</translation>
+    </message>
+    <message>
+        <source>Russian speech</source>
+        <translation>Russian speech</translation>
+    </message>
+    <message>
+        <source>Multilingual speech</source>
+        <translation>Multilingual speech</translation>
+    </message>
+    <message>
+        <source>Unknown</source>
+        <translation>Unknown</translation>
+    </message>
+    <message>
+        <source>Installed · {size:.2f} GiB</source>
+        <translation>Installed · {size:.2f} GiB</translation>
+    </message>
+    <message>
+        <source>Partial files</source>
+        <translation>Partial files</translation>
+    </message>
+    <message>
+        <source>Missing</source>
+        <translation>Missing</translation>
+    </message>
+    <message>
+        <source>CUDA/runtime preflight passed</source>
+        <translation>CUDA/runtime preflight passed</translation>
+    </message>
+    <message>
+        <source>Runtime available</source>
+        <translation>Runtime available</translation>
+    </message>
+    <message>
+        <source>Runtime unavailable</source>
+        <translation>Runtime unavailable</translation>
+    </message>
+    <message>
+        <source>No compatible CUDA device detected</source>
+        <translation>No compatible CUDA device detected</translation>
+    </message>
+    <message>
+        <source>Unavailable in this mode</source>
+        <translation>Unavailable in this mode</translation>
+    </message>
+    <message>
+        <source>Ready for transcription</source>
+        <translation>Ready for transcription</translation>
+    </message>
+    <message>
+        <source>Unavailable for transcription</source>
+        <translation>Unavailable for transcription</translation>
+    </message>
+    <message>
+        <source>Checkpoint size · {size:.2f} GiB</source>
+        <translation>Checkpoint size · {size:.2f} GiB</translation>
+    </message>
+    <message>
+        <source>Full-size multilingual Whisper checkpoint.</source>
+        <translation>Full-size multilingual Whisper checkpoint.</translation>
+    </message>
+    <message>
+        <source>Whisper checkpoint with a smaller decoder.</source>
+        <translation>Whisper checkpoint with a smaller decoder.</translation>
+    </message>
+    <message>
+        <source>Compact multilingual ASR with automatic language identification.</source>
+        <translation>Compact multilingual ASR with automatic language identification.</translation>
+    </message>
+    <message>
+        <source>Larger Qwen ASR checkpoint with automatic language identification.</source>
+        <translation>Larger Qwen ASR checkpoint with automatic language identification.</translation>
+    </message>
+    <message>
+        <source>Russian RNN-T with punctuation and text normalization.</source>
+        <translation>Russian RNN-T with punctuation and text normalization.</translation>
+    </message>
+    <message>
+        <source>Large multilingual GigaAM checkpoint with a CTC decoder.</source>
+        <translation>Large multilingual GigaAM checkpoint with a CTC decoder.</translation>
+    </message>
+    <message>
+        <source>Multilingual FastConformer with a duration-aware decoder.</source>
+        <translation>Multilingual FastConformer with a duration-aware decoder.</translation>
+    </message>
+    <message>
+        <source>Single-pass transcription with timestamped speaker turns.</source>
+        <translation>Single-pass transcription with timestamped speaker turns.</translation>
+    </message>
+    <message>
+        <source>Compact stateful decoder for speaker-attributed recorded audio.</source>
+        <translation>Compact stateful decoder for speaker-attributed recorded audio.</translation>
+    </message>
+    <message>
+        <source>Larger stateful decoder for speaker-attributed recorded audio.</source>
+        <translation>Larger stateful decoder for speaker-attributed recorded audio.</translation>
+    </message>
+    <message>
+        <source>Long-form ASR with anonymous, timestamped speaker segments.</source>
+        <translation>Long-form ASR with anonymous, timestamped speaker segments.</translation>
+    </message>
+    <message>
+        <source>Expert weights staged from host storage for CUDA inference.</source>
+        <translation>Expert weights staged from host storage for CUDA inference.</translation>
+    </message>
+    <message>
+        <source>Capabilities</source>
+        <translation>Capabilities</translation>
+    </message>
+    <message>
+        <source>Execution modes</source>
+        <translation>Execution modes</translation>
+    </message>
+    <message>
+        <source>Weights</source>
+        <translation>Weights</translation>
+    </message>
+    <message>
+        <source>Runtime and device</source>
+        <translation>Runtime and device</translation>
+    </message>
+    <message>
+        <source>Selection</source>
+        <translation>Selection</translation>
+    </message>
+    <message>
+        <source>Upstream</source>
+        <translation>Upstream</translation>
+    </message>
+    <message>
+        <source>Checkpoint source</source>
+        <translation>Checkpoint source</translation>
+    </message>
+    <message>
+        <source>License</source>
+        <translation>License</translation>
+    </message>
+    <message>
+        <source>Runtime</source>
+        <translation>Runtime</translation>
+    </message>
+    <message>
+        <source>Precision</source>
+        <translation>Precision</translation>
+    </message>
+    <message>
+        <source>Application duration limit · {minutes} minutes</source>
+        <translation>Application duration limit · {minutes} minutes</translation>
+    </message>
+    <message>
+        <source>SSH worker connected</source>
+        <translation>SSH worker connected</translation>
+    </message>
+    <message>
+        <source>SSH worker unavailable</source>
+        <translation>SSH worker unavailable</translation>
+    </message>
+    <message>
+        <source>SSH status unknown</source>
+        <translation>SSH status unknown</translation>
+    </message>
+    <message>
+        <source>Checking model files and runtime…</source>
+        <translation>Checking model files and runtime…</translation>
+    </message>
+    <message>
+        <source>Downloading checkpoint…</source>
+        <translation>Downloading checkpoint…</translation>
+    </message>
+    <message>
+        <source>Removing model files…</source>
+        <translation>Removing model files…</translation>
+    </message>
+    <message>
+        <source>Remove the managed checkpoint files for {model}?</source>
+        <translation>Remove the managed checkpoint files for {model}?</translation>
+    </message>
+    <message>
+        <source>Model status updated.</source>
+        <translation>Model status updated.</translation>
+    </message>
+    <message>
+        <source>Model operation failed. Refresh to check the current status.</source>
+        <translation>Model operation failed. Refresh to check the current status.</translation>
+    </message>
+    <message>
+        <source>Operation cancelled. Refresh to check the current status.</source>
+        <translation>Operation cancelled. Refresh to check the current status.</translation>
+    </message>
+    <message>
+        <source>Cancelling…</source>
+        <translation>Cancelling…</translation>
     </message>
 </context>
 </TS>

@@ -4,7 +4,7 @@
 
 Audio Transcript is a focused Windows 11 desktop utility for turning Telegram voice messages, common audio files, and the audio from local video files into faithful text. It provides a sequential queue, transcript preview, clipboard copy, and both TXT and Markdown artifacts.
 
-Transcription uses `faster-whisper` and CTranslate2. Local CPU and local NVIDIA GPU processing work offline after setup. An optional SSH mode sends media to a Windows GPU computer you select. Transcripts are saved on this computer.
+Whisper uses faster-whisper and CTranslate2. The additional remote GPU models use audio.cpp. Local CPU and local NVIDIA GPU processing work offline after setup. An optional SSH mode sends media to a Windows GPU computer you select. Transcripts are saved on this computer.
 
 ## Requirements
 
@@ -14,7 +14,7 @@ Transcription uses `faster-whisper` and CTranslate2. Local CPU and local NVIDIA 
 - For YouTube: Node.js 22+ or Deno 2.3+ available on PATH
 - Substantial free disk space for both Whisper models
 
-The application is CPU-first and uses CTranslate2 `int8`; a discrete GPU is not required.
+Fresh settings select Local NVIDIA GPU. Select Local CPU in **Acceleration…** for the legacy Whisper CTranslate2 `int8` workflow.
 
 ## Initial setup
 
@@ -38,20 +38,32 @@ The bootstrap is repeatable and skips complete models. Model files are intention
 
 Double-click `run.bat`. It starts the desktop application with `.venv\Scripts\pythonw.exe`, so normal use does not require a terminal.
 
-## Optional NVIDIA acceleration
+## NVIDIA acceleration
 
-Use **Acceleration…** to select **Local CPU**, **Local NVIDIA GPU**, or **Remote NVIDIA GPU**. Both model profiles are available in each mode. The main window shows the selected mode. Settings persist, and a failure stays in the selected mode.
+Use **Acceleration…** to select **Local CPU**, **Local NVIDIA GPU**, or **Remote NVIDIA GPU**. Both Whisper checkpoints are available in all three modes. The additional models run over SSH. The main window shows the selected mode. Settings persist, and a failure stays in the selected mode.
 
 - **Local NVIDIA GPU** requires Windows x64, a CUDA-compatible NVIDIA GPU with float16 support, a current driver compatible with CUDA 12.8, and the local models. Run `.\.venv\Scripts\python.exe scripts\setup_gpu.py` once from the repository. CUDA libraries are installed in the project environment.
-- **Remote NVIDIA GPU** requires a Windows x64 host with Python 3.11, an NVIDIA driver, and Windows OpenSSH using its default command shell. Configure key-based SSH access and verify the host key before provisioning. Run `.\.venv\Scripts\python.exe scripts\setup_gpu.py --remote gpu-tts` once, replacing `gpu-tts` with your SSH alias if needed. Setup installs the isolated worker, CUDA libraries and both models under `%LOCALAPPDATA%\AudioTranscriptGpu` on that host. Run the same command to update the worker or provision missing models.
+- **Remote NVIDIA GPU** requires a Windows x64 host with Python 3.11, an NVIDIA driver, and Windows OpenSSH using its default command shell. Configure key-based SSH access and verify the host key before provisioning. Run `.\.venv\Scripts\python.exe scripts\setup_gpu.py --remote gpu-tts` once, replacing `gpu-tts` with your SSH alias if needed. Setup provisions the worker, CTranslate2 CUDA dependencies and the pinned Windows audio.cpp 0.9.6 build under `%LOCALAPPDATA%\AudioTranscriptGpu`. The audio.cpp build requires a driver compatible with CUDA 13.3. Use `--worker-only` for a Whisper-only host. Use Model Manager to download weights to `D:\models\audio-transcript`.
 
 Choose the matching SSH alias in the application. Jobs use the verified host key and non-interactive OpenSSH. **Uploading over SSH** shows activity while the file is transferred. Stop closes the job's SSH session, and a remote lease expires after about 45 seconds without data or a heartbeat if the connection disappears. The worker uses a delete-on-close temporary media file and exits after each item, releasing its GPU memory.
 
+## Model Manager
+
+Select the target in **Acceleration…**, then open **Model Manager**. The catalog displays all 12 checkpoints, including models unavailable in the selected mode. It shows managed file status, the runtime and device preflight, supported modes, native capabilities and exact checkpoint files. CUDA preflight checks the runtime and device. Individual audio, context and GPU memory constraints can still produce a per-file error.
+
+- **Download** installs the pinned checkpoint. The progress bar follows received bytes. Cancelling leaves resumable partial files. Completed checkpoints are reusable offline.
+- **Remove files** asks for confirmation and removes only managed files for the selected checkpoint. An active inference or model operation holds the model lock.
+- **Use selected model** applies an installed checkpoint that passes preflight. Settings preserve the selection and SSH alias. Open **Refresh** to recheck storage and runtime after an external change.
+
+Each inference uses the selected model, with no model or execution-mode substitution. The [catalog manifest](src/audio_transcript/model_catalog.py) records package revisions, filenames, checksums, licenses and runtime options. After a baseline upgrade, move existing complete remote Whisper directories from the former worker's `models` folder into `D:\models\audio-transcript` before downloading replacements. Preserve the per-model folder names.
+
+`transcript.txt` and `transcript.md` retain the plain recognized text. Models with native speaker output also write `transcript.speakers.txt` when speaker-attributed text is available. Timestamps appear only when the model emits them. The VibeVoice streaming checkpoints emit native speaker labels without timestamps. Each whole recording is passed to the selected runtime in one session, and duration-limit errors are reported per item. During opaque inference, elapsed time remains available. The application needs position observations to estimate speed or ETA.
+
 ## Workflow
 
-Choose **Interface language** above the settings panel: English, Русский, Español, or Deutsch. The selector stays visible when settings are collapsed and works during processing. Changes apply immediately and are saved in `config/settings.json`. On first launch, the app uses a supported Windows display language, falling back to English. This setting changes only the interface: speech language is detected automatically, and transcript text, filenames, and Markdown metadata are preserved. Technical diagnostic details retain their original wording.
+Choose **Interface language** above the settings panel: English, Русский, Español, or Deutsch. The selector stays visible when settings are collapsed and works during processing. Changes apply immediately and are saved in `config/settings.json`. On first launch, the app uses a supported Windows display language, falling back to English. The language setting affects the interface. Transcript text, filenames and Markdown metadata remain independent. Technical diagnostic details retain their original wording.
 
-1. Expand **Show settings** if needed. Choose **Accuracy** for maximum fidelity or **Fast** for lower CPU processing time.
+1. Choose a ready model in **Model Manager**. Expand **Show settings** for the selected model, speaker and output settings.
 2. Optionally enter a default speaker. Each queued file's speaker remains editable.
 3. Choose **Workspace / transcripts** or **Same folder as source**.
 4. Drop files into the window, use **+ Files**, use non-recursive **+ Folder**, or scan `inbox\`. Alternatively, paste a YouTube video link into the **YouTube** field and select **Add Link** (or press Enter).
@@ -124,7 +136,7 @@ Same-folder mode creates `source-name_transcript\` beside the audio. Existing fo
 
 ## Privacy
 
-PyAV decodes and Whisper recognizes speech on the machine selected in **Acceleration…**. CPU and local GPU modes keep source media on this computer. Remote GPU mode transfers the complete selected media file (including video if present) or downloaded YouTube audio to the chosen SSH host, then returns transcript text. Output files are saved locally. YouTube downloads contact YouTube and its media delivery hosts. The app performs no semantic rewriting or summarization. Git ignore rules protect private runtime data in `inbox\`, `transcripts\`, `models\`, `.venv\` and `config\settings.json`.
+PyAV decodes and the selected model recognizes speech on the machine selected in **Acceleration…**. CPU and local GPU modes keep source media on this computer. Remote GPU mode transfers the complete selected media file (including video if present) or downloaded YouTube audio to the chosen SSH host, then returns transcript text. Output files are saved locally. YouTube downloads contact YouTube and its media delivery hosts. The app performs no semantic rewriting or summarization. Git ignore rules protect private runtime data in `inbox\`, `transcripts\`, `models\`, `.venv\` and `config\settings.json`.
 
 ## Tests and installation check
 

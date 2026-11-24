@@ -3,7 +3,7 @@
 **Repository:** `deelexx86/audio-transcript`  
 **Local workspace:** `D:\projects\audio-transcript`  
 **Platform:** Windows 11  
-**Status:** V2 ACCEPTED — 2026-10-11; R0 governance baseline with the explicitly authorized SSH GPU extension<br>
+**Status:** V2 governance baseline with authorized multi-model NVIDIA GPU and native speaker attribution<br>
 **Reference implementation:** `main` at `793c500aa072c0005ef282fa6a0383ef904d113b` (reviewed 2026-10-11)  
 **Artifact role:** Maintained source of truth for product boundaries, user workflows, engineering constraints, and acceptance requirements.  
 
@@ -25,7 +25,7 @@ The application's principal responsibility **ends with an accurate and accessibl
 
 Accuracy of meaning and preservation of critical wording take priority over literary polish. Special attention is required for negations, numbers, amounts, names, dates, technical terminology, qualifiers, and Russian/English code-switching.
 
-**Out of scope for the current roadmap:** automatic summaries, dialogue compilation/export, speaker diarization or recognition, embedded chat/LLM analysis, document-management platform, cloud synchronization, accounts, backend/server, and database by default. Any future expansion requires a distinct owner decision.
+**Out of scope for the current roadmap:** automatic summaries, inferred dialogue rewriting, speaker identity recognition, live microphone capture, embedded chat/LLM analysis, document management, cloud inference or synchronization, accounts, backend/server, and databases. Any future expansion requires a distinct owner decision.
 
 ---
 
@@ -48,7 +48,7 @@ Do not regress any of these accepted workflows while implementing V2 increments.
 
 ## 3. Stable engineering invariants
 
-1. **Local CPU is the default.** CPU and on-device NVIDIA CUDA must remain usable without a network connection after setup. Both use the same offline model profiles. Remote NVIDIA CUDA runs on a Windows host chosen by the user through existing OpenSSH access.
+1. **GPU is the primary target.** Fresh settings select on-device NVIDIA CUDA. The two existing Whisper models retain explicit local CPU and local NVIDIA CUDA execution offline after setup. Remote NVIDIA CUDA runs on a Windows host chosen by the user through existing OpenSSH access. Retain previously selected modes and never substitute a model or fall back to CPU.
 2. **External transfers are explicit and contextual.** YouTube fetching acquires source media. Selecting Remote NVIDIA GPU authorizes temporary transfer of each queued media file to the configured SSH host. Show the active mode and transfer phase. Authenticate the host, preserve local storage for final transcripts, and never switch execution modes automatically.
 3. **Source preservation.** Do not rename, move, modify, delete, or permanently duplicate local source media as a processing side effect.
 4. **Faithful transcript.** No automatic LLM rewriting, semantic correction, summarization, or inferred dialogue restructuring. STT model punctuation is acceptable.
@@ -100,7 +100,7 @@ The same-folder mode creates a dedicated `_transcript` directory beside the sour
 
 `transcript.txt` contains **only recognized text**. `transcript.md` records compact descriptive metadata such as source, processing date/time, source duration, detected language, optional speaker, actual engine/model, and a matching transcript body. For YouTube, it may also include the normalized source URL and title. Do not expose private system paths unnecessarily.
 
-Future engines must preserve these output contracts. GPU runs record the execution mode in Markdown. The existing TXT format and older artifacts remain valid.
+Future engines must preserve these output contracts. GPU runs record the execution mode in Markdown. The existing TXT format and older artifacts remain valid. When the selected model returns native speaker-attributed text, also save `transcript.speakers.txt` with anonymous labels and original timings where emitted. Keep the optional user-entered speaker as file metadata. Do not guess identities or timestamps. Use native full-recording state for speaker consistency when available. Reject over-limit inputs explicitly and report detected runtime truncation instead of presenting it as complete.
 
 ---
 
@@ -111,6 +111,8 @@ The main window remains a focused workspace for source intake, queue control, pr
 Current interface languages — **English, Russian, Spanish, German** — remain supported. Any new user-visible status, timer, label, dialog, error explanation, or setting must be localized in all four Qt catalogs; editable `.ts` and compiled `.qm` are maintained together. Internal identifiers and artifact content must not depend on translated text. Native system dialogs may follow Windows locale.
 
 Keep execution mode and SSH destination in the **Acceleration** dialog. The main window shows the selected execution mode and retains frequently changed file options. Lock changes to execution mode, SSH destination and model during an active batch. Preserve efficient operation at ordinary Windows window sizes and display scaling.
+
+Provide a **Model Manager** for the complete catalog. Show the upstream model, available checkpoint, license, runtime, numeric precision, supported mode, capabilities, installation state and observed preflight status. Separate device/runtime availability and SSH failures from missing weights. Model installation and scoped removal must be observable and must support cancellation where practical. Keep unavailable candidates visible without presenting them as usable.
 
 ---
 
@@ -171,7 +173,7 @@ Review operational edge cases supported by evidence: cancellation and closing du
 
 Move growing configuration out of the main workspace into a dedicated Qt settings window/dialog, without changing the application framework.
 
-Potential groups are General, Local Models, Acceleration, Cloud STT, and Files/History; **only expose groups when the associated feature exists**. Preserve live usability and the current model/output/speaker workflow. Avoid building empty speculative screens.
+Potential groups are General, Model Manager, Acceleration, and Files/History; **only expose groups when the associated feature exists**. Preserve live usability and the current model/output/speaker workflow. Avoid building empty speculative screens.
 
 Store non-secret preferences in ignored `config/settings.json`. Future API secrets must be handled separately by a suitable OS credential facility, never in Git, plain application settings, or logs.
 
@@ -197,35 +199,16 @@ History is **not** a conversation compiler, semantic library, or document-manage
 
 ---
 
-## 10. R5 — Optional local and SSH NVIDIA GPU inference
+## 10. R5 — Multi-model NVIDIA GPU inference
 
-- Expose three explicit modes. Local CPU uses CTranslate2 `int8`. Local NVIDIA GPU and Remote NVIDIA GPU use CTranslate2 CUDA `float16`. Preserve both Whisper model profiles in every mode.
-- Isolate the optional CUDA dependencies. Provision the Windows SSH host and models separately from normal jobs and existing GPU workloads. Run one on-demand worker per item using established SSH authentication and host-key verification.
-- Transfer media only in the selected remote mode. The remote worker uses transient storage and must release media and GPU resources on success, error, Stop, or loss of the client. Return recognized text over SSH and save artifacts on the primary computer. No cloud STT or permanent application service is involved.
-- Detect and report unavailable devices, missing runtime components or models, and SSH failures. Preserve the queue, transcript fidelity, artifact, localization, cancellation, timing and ETA contracts.
-- Validate CUDA on actual hardware with both profiles. Compare the CPU baseline and GPU on identical audio, measuring inference, SSH overhead, memory and fidelity.
+- Preserve the two CTranslate2 Whisper models in all three execution modes. Support additional ASR families over verified Windows OpenSSH using isolated, on-demand CUDA inference. Record actual model and execution precision in Markdown.
+- Store new remote weights and model caches under `D:\models\audio-transcript`, with a separate directory per checkpoint. Keep local Whisper weights in the repository's ignored `models\` directory. Do not implicitly fetch weights during inference.
+- Before transferring media, check the selected checkpoint and required runtime. Return recognized text and native speaker information over SSH. Save final artifacts on the primary computer and release temporary media and GPU resources on completion, error, cancellation, or lost connection.
+- Validate feasible CUDA configurations on the available NVIDIA hardware with identical Russian, English, mixed-language and multi-speaker inputs. Include longer recordings for long-form candidates. Measure fidelity, completeness, speaker attribution, timing, throughput, storage and peak GPU memory. Document scope and use the legacy CPU path for regression coverage.
 
----
+## 11. R6 — Cloud STT
 
-## 11. R6 — Optional cloud STT provider
-
-A cloud STT option may improve latency or quality for some recordings, but it changes confidentiality, cost, network, and failure behavior. It must remain **opt-in**, not the default.
-
-Provider and initial model are **not yet selected**. First compare concrete candidates on representative Russian, English-term, short and long recordings, considering fidelity, latency, actual total cost, accepted media formats and upload size/duration limits, and integration complexity. Select one first production provider based on evidence. Do not implement multiple providers just because an abstraction permits it.
-
-Implementation requirements, if authorized:
-
-- Explicit user choice of cloud processing and clear indication that media is transmitted to the provider; no automatic local-to-cloud fallback.
-- Protect API credentials using an appropriate Windows secret store, separate from ordinary settings, source code, Git, logs, and exported transcripts.
-- Honor provider input limits. For long recordings, any local conversion/chunking must preserve speech continuity as well as practical; explain residual limitations.
-- Bound retries, timeouts, upload operations, and cost exposure. Show real elapsed time and only credible progress/ETA.
-- No raw media, auth headers, credentials, or provider response payloads in persistent diagnostic logs.
-- Output remains standard UTF-8 TXT/Markdown with actual provider/model identification and source provenance. Source media remains unchanged; local and cloud histories remain accessible through the same result browser.
-- Local CPU transcription remains fully usable if the network or provider fails or the user has no API key.
-
-Users decide whether a particular recording (especially recordings of other people) is appropriate for external transmission. The app must not obscure that decision.
-
----
+Cloud transcription is outside the authorized roadmap. YouTube source acquisition, explicit model downloads and user-selected SSH processing are the supported network operations.
 
 ## 12. Development sequence and acceptance gates
 
@@ -236,11 +219,11 @@ Users decide whether a particular recording (especially recordings of other peop
 | R2 — CI & Stability | Planned | Windows automated verification and bounded reliability fixes |
 | R3 — Settings UX | Planned | Dedicated settings UI, no change to core user workflow |
 | R4 — History | Planned | Access existing transcript artifacts in-app without duplicating content |
-| R5 — NVIDIA GPU integration | Authorized | Optional local and on-demand Windows SSH CUDA; verify both profiles on NVIDIA hardware |
-| R6 — Cloud STT | Conditional | Provider choice, privacy and long-audio design gate before implementation |
+| R5 — Multi-model NVIDIA GPU | Authorized | Catalog, managed weights, on-demand Windows SSH CUDA, native speaker outputs and GPU validation |
+| R6 — Cloud STT | Out of scope | Requires a separate roadmap decision |
 | R7 — Integration acceptance | Planned after approved changes | Revalidate local baseline, additional modes, localization, docs, privacy and Git hygiene |
 
-Use scoped Codex tasks with an accepted starting SHA, bounded implementation, proportional tests, manual smoke where needed, and PR/merge after owner acceptance. Do not combine GPU, cloud, history, and UI redesign into one implementation prompt. Do not create extra governance documents merely to restate this brief.
+Use scoped Codex tasks with an accepted starting SHA, bounded implementation, proportional tests, manual smoke where needed, and follow the task’s Git publication instructions. Do not create extra governance documents merely to restate this brief.
 
 **Compatibility criterion across stages:** a user with the existing Windows installation and local model files can continue transcribing local audio/video with the accepted CPU profiles and familiar TXT/Markdown outputs.
 
@@ -250,7 +233,7 @@ Use scoped Codex tasks with an accepted starting SHA, bounded implementation, pr
 
 `BRIEF.md` states maintained product intent; `AGENTS.md` states agent/repository operating instructions; README files document actual usage. Keep English, Russian, Spanish and German README guides aligned when user-facing behavior changes.
 
-The previous `BRIEF.md` originated as a one-time MVP contract. This consolidated revision supersedes its outdated restrictions (such as the absolute ban on network input and the original Telegram-only framing) while preserving local privacy and faithful transcript principles. Public documentation must distinguish **offline local processing**, **online source acquisition**, **opt-in processing on a selected SSH host**, and **future cloud recognition**.
+The previous `BRIEF.md` originated as a one-time MVP contract. This consolidated revision supersedes its outdated restrictions (such as the absolute ban on network input and the original Telegram-only framing) while preserving local privacy and faithful transcript principles. Public documentation must distinguish **offline local processing**, **online source acquisition**, **opt-in processing on a selected SSH host**, and **explicit model downloads**.
 
 Do not include private recordings, personal transcript content, credentials, downloaded models, or private runtime paths in public repository files.
 

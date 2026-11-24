@@ -15,8 +15,10 @@ from audio_transcript.acceleration import ExecutionMode
 from audio_transcript.artifacts import write_artifacts
 from audio_transcript.audio import probe_duration
 from audio_transcript.errors import ProcessingFailure
-from audio_transcript.paths import CONFIG_DIR
-from audio_transcript.profiles import ModelMissingError, ModelProfile, require_local_model
+from audio_transcript.model_catalog import CATALOG_BY_KEY, CatalogModel
+from audio_transcript.model_storage import model_lock
+from audio_transcript.paths import CONFIG_DIR, MODELS_DIR
+from audio_transcript.profiles import ModelMissingError, ModelProfile, PROFILES_BY_KEY, require_local_model
 from audio_transcript.queueing import QueueStatus
 from audio_transcript.remote_gpu import RemoteGPUError, RemoteTranscriber
 from audio_transcript.transcription import LocalTranscriber, TranscriptionCancelled
@@ -43,7 +45,7 @@ class BatchWorker(QObject):
     def __init__(
         self,
         items: list[WorkItem],
-        profile: ModelProfile,
+        profile: ModelProfile | CatalogModel,
         output_mode: str,
         *,
         clock: Callable[[], float] = monotonic,
@@ -52,7 +54,7 @@ class BatchWorker(QObject):
     ) -> None:
         super().__init__()
         self.items = items
-        self.profile = profile
+        self.profile = PROFILES_BY_KEY.get(profile.key, profile)
         self.output_mode = output_mode
         self.mode = ExecutionMode(mode)
         self.ssh_alias = ssh_alias
@@ -71,14 +73,21 @@ class BatchWorker(QObject):
             timing.observe(position, duration)
         self.timing_changed.emit(item_id, timing.snapshot())
         if position is None:
-            self.state_changed.emit(item_id, phase, -1 if phase == QueueStatus.UPLOADING else 0)
+            indeterminate = phase in (QueueStatus.UPLOADING, QueueStatus.TRANSCRIBING)
+            self.state_changed.emit(item_id, phase, -1 if indeterminate else 0)
 
     def request_stop(self) -> None:
         self._stop_requested.set()
 
     @Slot()
     def run(self) -> None:
+        with ExitStack() as session:
+            stopped = self._run_items(session)
+        self.finished.emit(stopped)
+
+    def _run_items(self, session: ExitStack) -> bool:
         stopped = False
+        local_lock_held = False
         transcriber: LocalTranscriber | RemoteTranscriber | None = None
         for work in self.items:
             if self._stop_requested.is_set():
@@ -88,6 +97,12 @@ class BatchWorker(QObject):
             self._state(work.id, timing, QueueStatus.PREPARING, 0)
             try:
                 with ExitStack() as cleanup:
+                    if self.mode != ExecutionMode.REMOTE_CUDA and not local_lock_held:
+                        catalog_model = CATALOG_BY_KEY[self.profile.key]
+                        if self.mode not in catalog_model.modes:
+                            raise ValueError("This model is unavailable in the selected execution mode.")
+                        session.enter_context(model_lock(MODELS_DIR, catalog_model))
+                        local_lock_held = True
                     source = work.source
                     title = ""
                     if work.source_url:
@@ -144,6 +159,8 @@ class BatchWorker(QObject):
                         speaker=work.speaker,
                         model_name=self.profile.artifact_name,
                         execution_mode=self.mode,
+                        speaker_segments=result.speakers,
+                        precision=self.profile.precision if isinstance(self.profile, CatalogModel) else None,
                         output_mode="workspace" if work.source_url else self.output_mode,
                         source_url=work.source_url,
                         source_title=title,
@@ -182,4 +199,4 @@ class BatchWorker(QObject):
                 if self._stop_requested.is_set():
                     stopped = True
                     break
-        self.finished.emit(stopped)
+        return stopped

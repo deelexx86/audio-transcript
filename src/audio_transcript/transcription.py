@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from time import monotonic
 from typing import BinaryIO
 
 from faster_whisper import WhisperModel
@@ -13,10 +14,20 @@ from audio_transcript.profiles import ModelProfile, require_local_model
 
 
 @dataclass(frozen=True, slots=True)
+class SpeakerSegment:
+    speaker: str
+    text: str
+    start: float | None = None
+    end: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class TranscriptionResult:
     text: str
     language: str | None
     duration: float | None
+    speakers: tuple[SpeakerSegment, ...] = ()
+    runtime_seconds: float | None = None
 
 
 class TranscriptionCancelled(RuntimeError):
@@ -66,6 +77,7 @@ class LocalTranscriber:
             raise TranscriptionCancelled("Transcription was stopped.")
         if on_timing:
             on_timing("Transcribing", None, actual_duration)
+        started = monotonic()
         segments, info = self.model.transcribe(audio)
         pieces: list[str] = []
         for segment in segments:
@@ -83,4 +95,5 @@ class LocalTranscriber:
             text="".join(pieces).strip(),
             language=getattr(info, "language", None),
             duration=actual_duration,
+            runtime_seconds=monotonic() - started,
         )

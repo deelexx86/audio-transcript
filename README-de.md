@@ -4,7 +4,7 @@
 
 Audio Transcript ist ein kleines Windows-11-Desktopprogramm für originalgetreue Transkripte von Telegram-Sprachnachrichten, Audiodateien und Tonspuren lokaler Videos. Es bietet eine sequenzielle Warteschlange, Vorschau, Zwischenablage sowie TXT- und Markdown-Dateien.
 
-Die Spracherkennung verwendet `faster-whisper` und CTranslate2. Nach der Einrichtung funktionieren lokale CPU und lokale NVIDIA-GPU offline. Der optionale SSH-Modus sendet Medien an einen ausgewählten Windows-Rechner. Die Transkriptdateien werden auf diesem Rechner gespeichert.
+Whisper verwendet faster-whisper und CTranslate2. Die übrigen entfernten GPU-Modelle verwenden audio.cpp. Nach der Einrichtung funktionieren lokale CPU und lokale NVIDIA-GPU offline. Der optionale SSH-Modus sendet Medien an einen ausgewählten Windows-Rechner. Die Transkriptdateien werden auf diesem Rechner gespeichert.
 
 ## Voraussetzungen
 
@@ -13,7 +13,7 @@ Die Spracherkennung verwendet `faster-whisper` und CTranslate2. Nach der Einrich
 - Für YouTube: Node.js 22+ oder Deno 2.3+ im PATH.
 - Ausreichend freier Speicher für beide Whisper-Modelle.
 
-Die App nutzt die CPU mit CTranslate2 `int8`; eine separate GPU ist nicht erforderlich.
+Neue Einstellungen wählen die lokale NVIDIA-GPU. Für den bisherigen Whisper-Modus mit CTranslate2 `int8` wählen Sie unter Beschleunigung die lokale CPU.
 
 ## Erstinstallation
 
@@ -43,12 +43,18 @@ Die Auswahl betrifft nur die Oberfläche. Die Sprache der Aufnahme wird automati
 
 ## NVIDIA-Beschleunigung
 
-Wählen Sie unter **Beschleunigung…** zwischen **Lokale CPU**, **Lokale NVIDIA-GPU** und **Entfernte NVIDIA-GPU**. Beide Modellprofile stehen in jedem Modus zur Verfügung. Der Modus wird im Hauptfenster angezeigt und gespeichert. Bei einem Fehler bleibt der gewählte Modus aktiv.
+Wählen Sie unter **Beschleunigung…** zwischen **Lokale CPU**, **Lokale NVIDIA-GPU** und **Entfernte NVIDIA-GPU**. Beide Whisper-Modelle stehen in jedem Modus zur Verfügung. Weitere Modelle laufen per SSH. Der Modus wird im Hauptfenster angezeigt und gespeichert. Bei einem Fehler bleibt der gewählte Modus aktiv.
 
 - Die **lokale NVIDIA-GPU** benötigt Windows x64, eine NVIDIA-GPU mit float16-Unterstützung, einen mit CUDA 12.8 kompatiblen Treiber und die lokalen Modelle. Führen Sie `.\.venv\Scripts\python.exe scripts\setup_gpu.py` einmal im Repository aus. Die CUDA-Bibliotheken werden in der Projektumgebung installiert.
-- Die **entfernte NVIDIA-GPU** benötigt Windows x64, Python 3.11, einen NVIDIA-Treiber und Windows OpenSSH mit der Standard-Shell. Richten Sie den SSH-Schlüsselzugang ein und prüfen Sie den Hostschlüssel. Führen Sie `.\.venv\Scripts\python.exe scripts\setup_gpu.py --remote gpu-tts` einmal aus und ersetzen Sie bei Bedarf `gpu-tts` durch Ihren SSH-Alias. Worker, CUDA-Bibliotheken und beide Modelle werden isoliert unter `%LOCALAPPDATA%\AudioTranscriptGpu` installiert. Derselbe Befehl aktualisiert den Worker oder installiert fehlende Modelle.
+- Die **entfernte NVIDIA-GPU** benötigt Windows x64, Python 3.11, einen NVIDIA-Treiber und Windows OpenSSH mit der Standard-Shell. Richten Sie den SSH-Schlüsselzugang ein und prüfen Sie den Hostschlüssel. Führen Sie `.\.venv\Scripts\python.exe scripts\setup_gpu.py --remote gpu-tts` einmal aus und ersetzen Sie bei Bedarf `gpu-tts` durch Ihren SSH-Alias. Die Einrichtung installiert Worker, CUDA-Bibliotheken und audio.cpp 0.9.6 in `%LOCALAPPDATA%\AudioTranscriptGpu`. audio.cpp benötigt einen mit CUDA 13.3 kompatiblen Treiber. Verwenden Sie `--worker-only` für einen reinen Whisper-Host. Laden Sie Gewichte über die Modellverwaltung nach `D:\models\audio-transcript`.
 
 Wählen Sie denselben SSH-Alias in der App. SSH läuft ohne Rückfragen und prüft den Hostschlüssel. Während des Sendens erscheint **Übertragung per SSH**. Stoppen beendet die SSH-Sitzung des Auftrags. Bei einem Verbindungsabbruch endet der Worker nach etwa 45 Sekunden ohne Daten oder Lebenszeichen. Die temporäre Datei wird beim Schließen gelöscht. Der GPU-Speicher wird nach jedem Auftrag freigegeben.
+
+## Modellverwaltung
+
+Wählen Sie unter **Beschleunigung…** den Modus und öffnen Sie die **Modellverwaltung**. Der Katalog zeigt zwölf Modelle mit Gewichten, Lizenzen, Modi, Funktionen und geprüftem Status. **Herunterladen** zeigt den tatsächlichen Fortschritt und setzt unterbrochene Downloads fort. **Dateien entfernen** löscht die verwalteten Dateien des gewählten Modells. **Ausgewähltes Modell verwenden** übernimmt ein einsatzbereites Modell.
+
+TXT und Markdown enthalten weiterhin die erkannten Wörter. Bei nativer Sprecherzuordnung enthält `transcript.speakers.txt` anonyme Sprecherkennungen und verfügbare Zeitmarken. VibeVoice-Streaming-Modelle geben Sprecherkennungen aus. Der Modellzustand bleibt innerhalb einer Aufnahme erhalten. Die App meldet Dauergrenzen und zeigt die verstrichene Zeit auch ohne Positionsdaten.
 
 ## Arbeitsablauf
 
@@ -123,7 +129,7 @@ Neben der Quelle wird `source-name_transcript\` angelegt. Bestehende Ordner werd
 
 ## Datenschutz
 
-PyAV dekodiert und Whisper erkennt Sprache auf dem unter **Beschleunigung…** gewählten Computer. In lokalen Modi bleiben die Quelldateien hier. Im Remotemodus wird die vollständige Mediendatei einschließlich Video oder das heruntergeladene YouTube-Audio per SSH übertragen. Der Text kommt zurück und die Transkriptdateien werden hier gespeichert. YouTube-Downloads kontaktieren YouTube und seine Medienserver. Die App fasst Inhalte weder zusammen noch schreibt sie um. Git-Regeln schützen private Laufzeitdaten in `inbox\`, `transcripts\`, `models\`, `.venv\` und `config\settings.json`.
+PyAV dekodiert und das ausgewählte Modell erkennt Sprache auf dem unter **Beschleunigung…** gewählten Computer. In lokalen Modi bleiben die Quelldateien hier. Im Remotemodus wird die vollständige Mediendatei einschließlich Video oder das heruntergeladene YouTube-Audio per SSH übertragen. Der Text kommt zurück und die Transkriptdateien werden hier gespeichert. YouTube-Downloads kontaktieren YouTube und seine Medienserver. Die App fasst Inhalte weder zusammen noch schreibt sie um. Git-Regeln schützen private Laufzeitdaten in `inbox\`, `transcripts\`, `models\`, `.venv\` und `config\settings.json`.
 
 ## Prüfungen
 

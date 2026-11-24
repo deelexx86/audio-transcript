@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from audio_transcript.acceleration import ExecutionMode, valid_ssh_alias
+from audio_transcript.model_catalog import CATALOG_BY_KEY
 from audio_transcript.paths import SETTINGS_PATH
 
 
@@ -20,7 +21,7 @@ class AppSettings:
     splitter_sizes: list[int] | None = None
     settings_expanded: bool = True
     interface_language: str = ""
-    execution_mode: str = ExecutionMode.CPU
+    execution_mode: str = ExecutionMode.LOCAL_CUDA
     ssh_alias: str = "gpu-tts"
 
 
@@ -35,8 +36,10 @@ class SettingsStore:
                 return AppSettings()
             allowed = AppSettings.__dataclass_fields__.keys()
             values = {key: value for key, value in data.items() if key in allowed}
+            # Existing pre-acceleration settings imply the CPU workflow.
+            values.setdefault("execution_mode", ExecutionMode.CPU)
             settings = AppSettings(**values)
-            if settings.model_profile not in {"accuracy", "fast"}:
+            if not isinstance(settings.model_profile, str) or settings.model_profile not in CATALOG_BY_KEY:
                 settings.model_profile = "accuracy"
             if settings.output_mode not in {"workspace", "source"}:
                 settings.output_mode = "workspace"
@@ -49,7 +52,7 @@ class SettingsStore:
             if settings.interface_language not in ("", "en", "ru", "es", "de"):
                 settings.interface_language = ""
             if settings.execution_mode not in tuple(ExecutionMode):
-                settings.execution_mode = ExecutionMode.CPU
+                settings.execution_mode = ExecutionMode.LOCAL_CUDA
             if not valid_ssh_alias(settings.ssh_alias):
                 # Preserve the selected mode and require an explicit valid destination.
                 settings.ssh_alias = ""

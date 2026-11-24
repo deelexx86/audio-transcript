@@ -26,6 +26,7 @@ def messages(path):
         (context.findtext("name"), message.findtext("source")): message
         for context in ET.parse(path).findall("context")
         for message in context.findall("message")
+        if message.find("translation").get("type") not in {"vanished", "obsolete"}
     }
 
 
@@ -35,7 +36,8 @@ def test_catalogs_cover_current_source_and_compiled_translations(tmp_path):
     root = Path(__file__).resolve().parents[1]
     subprocess.run([
         str(Path(sys.executable).with_name("pyside6-lupdate.exe" if sys.platform == "win32" else "pyside6-lupdate")),
-        str(root / "src/audio_transcript/ui.py"), "-tr-function-alias", "tr+=_status",
+        str(root / "src/audio_transcript/ui.py"), str(root / "src/audio_transcript/model_manager.py"),
+        "-tr-function-alias", "tr+=_status",
         "-locations", "none", "-source-language", "en", "-ts", str(extracted),
     ], check=True, capture_output=True)
     expected = messages(extracted)
@@ -50,7 +52,7 @@ def test_catalogs_cover_current_source_and_compiled_translations(tmp_path):
             forms = translation.findall("numerusform")
             texts = [form.text for form in forms] if forms else [translation.text]
             assert all(texts)
-            placeholders = lambda value: set(re.findall(r"\{\w+\}|%n", value))
+            placeholders = lambda value: set(re.findall(r"\{\w+(?::[^{}]+)?\}|%n", value))
             assert all(placeholders(text) == placeholders(source) for text in texts)
             if forms:
                 assert len(forms) == (3 if code == "ru" else 2)
@@ -192,7 +194,7 @@ def test_narrow_layout_preserves_queue_and_preview_space(code, tmp_path):
 def test_threaded_failures_reach_localized_ui_and_batch_continues(tmp_path):
     app = QApplication.instance() or QApplication([])
     store = SettingsStore(tmp_path / "settings.json")
-    store.save(AppSettings(interface_language="en"))
+    store.save(AppSettings(interface_language="en", execution_mode="cpu"))
     window = MainWindow(store)
     sources = [tmp_path / name for name in ("broken.wav", "повреждённый.mp4")]
     for source in sources:

@@ -10,6 +10,7 @@ from pathlib import Path
 from audio_transcript.acceleration import ExecutionMode
 from audio_transcript.audio import format_duration
 from audio_transcript.paths import TRANSCRIPTS_DIR
+from audio_transcript.transcription import SpeakerSegment
 
 
 INVALID_FOLDER_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
@@ -20,6 +21,7 @@ class ArtifactResult:
     directory: Path
     text_path: Path
     markdown_path: Path
+    speakers_path: Path | None = None
 
 
 def safe_source_stem(source: str | Path) -> str:
@@ -68,6 +70,7 @@ def render_markdown(
     source_url: str | None = None,
     source_title: str = "",
     execution_mode: ExecutionMode = ExecutionMode.CPU,
+    precision: str | None = None,
 ) -> str:
     clean_speaker = " ".join(speaker.split())
     lines = [
@@ -87,7 +90,7 @@ def render_markdown(
     if execution_mode == ExecutionMode.LOCAL_CUDA:
         lines.append("Execution: Local NVIDIA GPU (CUDA float16)")
     if execution_mode == ExecutionMode.REMOTE_CUDA:
-        lines.append("Execution: Remote NVIDIA GPU (SSH, CUDA float16)")
+        lines.append(f"Execution: Remote NVIDIA GPU (SSH, {precision or 'CUDA float16'})")
     lines.extend(
         [
             f"Model: {model_name}",
@@ -115,6 +118,8 @@ def write_artifacts(
     source_url: str | None = None,
     source_title: str = "",
     execution_mode: ExecutionMode = ExecutionMode.CPU,
+    precision: str | None = None,
+    speaker_segments: tuple[SpeakerSegment, ...] = (),
 ) -> ArtifactResult:
     clean_transcript = transcript.strip()
     parent, base_name = output_parent(source, output_mode, processed_at, workspace)
@@ -123,6 +128,8 @@ def write_artifacts(
     markdown_path = directory / "transcript.md"
     text_temporary = directory / "transcript.txt.tmp"
     markdown_temporary = directory / "transcript.md.tmp"
+    speakers_path = directory / "transcript.speakers.txt" if speaker_segments else None
+    speakers_temporary = speakers_path.with_suffix(".tmp") if speakers_path is not None else None
     try:
         text_temporary.write_text(clean_transcript + "\n", encoding="utf-8")
         markdown_temporary.write_text(
@@ -137,12 +144,35 @@ def write_artifacts(
                 source_url=source_url,
                 source_title=source_title,
                 execution_mode=execution_mode,
+                precision=precision,
             ),
             encoding="utf-8",
         )
+        if speakers_temporary is not None:
+            speakers_temporary.write_text(render_speakers(speaker_segments), encoding="utf-8")
         os.replace(text_temporary, text_path)
         os.replace(markdown_temporary, markdown_path)
-        return ArtifactResult(directory, text_path, markdown_path)
+        if speakers_temporary is not None:
+            os.replace(speakers_temporary, speakers_path)
+        return ArtifactResult(directory, text_path, markdown_path, speakers_path)
     except Exception:
         shutil.rmtree(directory, ignore_errors=True)
         raise
+
+
+def timestamp(seconds: float) -> str:
+    millis = round(seconds * 1000)
+    minutes, rest = divmod(millis, 60_000)
+    hours, minutes = divmod(minutes, 60)
+    seconds, millis = divmod(rest, 1000)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}.{millis:03d}"
+
+
+def render_speakers(segments: tuple[SpeakerSegment, ...]) -> str:
+    lines = []
+    for segment in segments:
+        time = ""
+        if segment.start is not None and segment.end is not None:
+            time = f"[{timestamp(segment.start)}–{timestamp(segment.end)}] "
+        lines.append(f"{time}{segment.speaker}: {segment.text}")
+    return "\n".join(lines) + "\n"

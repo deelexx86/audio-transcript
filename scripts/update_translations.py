@@ -16,6 +16,7 @@ def main() -> None:
     if args.update:
         subprocess.run([
             str(tools / f"pyside6-lupdate{suffix}"), str(root / "src/audio_transcript/ui.py"),
+            str(root / "src/audio_transcript/model_manager.py"),
             "-tr-function-alias", "tr+=_status", "-locations", "none", "-source-language", "en",
             "-ts", *map(str, catalogs),
         ], check=True)

@@ -15,6 +15,7 @@ from audio_transcript.transcription import LocalTranscriber, TranscriptionCancel
 
 def test_mode_and_profile_are_independent_and_legacy_defaults_are_local(tmp_path):
     store = SettingsStore(tmp_path / "settings.json")
+    assert store.load().execution_mode == ExecutionMode.LOCAL_CUDA
     store.path.write_text('{"model_profile":"fast"}', encoding="utf-8")
     assert store.load().execution_mode == ExecutionMode.CPU
     for mode in ExecutionMode:

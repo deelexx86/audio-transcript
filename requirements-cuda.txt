@@ -1,5 +1,6 @@
 # Optional Windows x64 runtime. Install into the Audio Transcript venv only.
 faster-whisper==1.2.1
+filelock>=3.10,<4
 ctranslate2==4.9.0
 av>=13,<17
 nvidia-cublas-cu12==12.8.4.1

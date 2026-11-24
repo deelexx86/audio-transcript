@@ -58,7 +58,9 @@ def test_main_window_workflow_controls_and_resize(monkeypatch, tmp_path: Path) -
     app.processEvents()
 
     assert window.windowTitle() == "Audio Transcript"
-    assert window.model_combo.count() == 2
+    assert window.model_combo.count() == 12
+    assert [window.model_combo.itemData(i) for i in range(2)] == ["accuracy", "fast"]
+    assert not window.model_combo.model().item(2).isEnabled()
     assert window.output_combo.count() == 2
     assert not window.transcribe_button.isEnabled()
     assert not window.stop_button.isEnabled()

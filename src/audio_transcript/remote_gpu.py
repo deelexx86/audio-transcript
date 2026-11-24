@@ -15,8 +15,9 @@ from time import monotonic
 from typing import BinaryIO
 
 from audio_transcript.acceleration import valid_ssh_alias
+from audio_transcript.model_catalog import CatalogModel
 from audio_transcript.profiles import ModelProfile
-from audio_transcript.transcription import TranscriptionCancelled, TranscriptionResult
+from audio_transcript.transcription import SpeakerSegment, TranscriptionCancelled, TranscriptionResult
 
 
 PROTOCOL = 1
@@ -26,7 +27,7 @@ UPLOAD_TIMEOUT = 60
 LEASE_TIMEOUT = 45
 REMOTE_COMMAND = (
     r'"%LOCALAPPDATA%\AudioTranscriptGpu\.venv\Scripts\python.exe" -u '
-    r'"%LOCALAPPDATA%\AudioTranscriptGpu\worker.pyz"'
+    r'"%LOCALAPPDATA%\AudioTranscriptGpu\worker-v2.pyz"'
 )
 
 
@@ -47,7 +48,7 @@ class RemoteGPUError(RuntimeError):
 
 
 class RemoteTranscriber:
-    def __init__(self, profile: ModelProfile, alias: str) -> None:
+    def __init__(self, profile: ModelProfile | CatalogModel, alias: str) -> None:
         self.profile = profile
         self.command = [*ssh_command(alias), REMOTE_COMMAND]
 
@@ -177,7 +178,9 @@ class RemoteTranscriber:
                         text, language = message["text"], message["language"]
                         if not isinstance(text, str) or (language is not None and not isinstance(language, str)):
                             raise ValueError("Invalid transcript.")
-                        result = TranscriptionResult(text, language, actual_duration)
+                        speakers = tuple(SpeakerSegment(**entry) for entry in message.get("speakers", ()))
+                        runtime_seconds = message.get("runtime_seconds")
+                        result = TranscriptionResult(text, language, actual_duration, speakers, runtime_seconds)
                         phase = "finished"
                         last_write = monotonic()
                     elif event == "error":

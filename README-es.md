@@ -4,7 +4,7 @@
 
 Audio Transcript es una utilidad de escritorio para Windows 11 que convierte mensajes de voz de Telegram, archivos de audio y el sonido de vídeos locales en texto fiel. Ofrece una cola secuencial, vista previa, copia al portapapeles y archivos TXT y Markdown.
 
-El reconocimiento usa `faster-whisper` y CTranslate2. Tras la instalación, la CPU local y la GPU NVIDIA local funcionan sin conexión. El modo remoto opcional envía los archivos multimedia a un equipo Windows seleccionado por SSH. Las transcripciones se guardan en este equipo.
+Whisper usa faster-whisper y CTranslate2. Los demás modelos GPU remotos usan audio.cpp. Tras la instalación, la CPU local y la GPU NVIDIA local funcionan sin conexión. El modo remoto opcional envía los archivos multimedia a un equipo Windows seleccionado por SSH. Las transcripciones se guardan en este equipo.
 
 ## Requisitos
 
@@ -13,7 +13,7 @@ El reconocimiento usa `faster-whisper` y CTranslate2. Tras la instalación, la C
 - Para YouTube: Node.js 22+ o Deno 2.3+ disponible en PATH.
 - Espacio suficiente para los dos modelos Whisper.
 
-La aplicación utiliza la CPU con CTranslate2 `int8`; no requiere una GPU dedicada.
+La configuración inicial selecciona GPU NVIDIA local. Para el modo anterior de Whisper con CTranslate2 `int8`, seleccione CPU local en Aceleración.
 
 ## Instalación inicial
 
@@ -43,12 +43,18 @@ Solo cambia la interfaz. El idioma del audio se detecta automáticamente; el tex
 
 ## Aceleración NVIDIA
 
-En **Aceleración…**, elija **CPU local**, **GPU NVIDIA local** o **GPU NVIDIA remota**. Ambos perfiles de modelo están disponibles en todos los modos. El modo se muestra en la ventana principal y se conserva entre sesiones. Un fallo no cambia el modo.
+En **Aceleración…**, elija **CPU local**, **GPU NVIDIA local** o **GPU NVIDIA remota**. Ambos modelos Whisper están disponibles en todos los modos. Los modelos adicionales se ejecutan por SSH. El modo se muestra en la ventana principal y se conserva entre sesiones. Un fallo no cambia el modo.
 
 - La **GPU NVIDIA local** necesita Windows x64, una GPU NVIDIA compatible con float16, un controlador compatible con CUDA 12.8 y los modelos locales. Ejecute `.\.venv\Scripts\python.exe scripts\setup_gpu.py` una vez desde el repositorio. Las bibliotecas CUDA se instalan en el entorno del proyecto.
-- La **GPU NVIDIA remota** necesita Windows x64, Python 3.11, un controlador NVIDIA y Windows OpenSSH con su intérprete predeterminado. Configure el acceso por clave SSH y verifique la clave del host. Ejecute `.\.venv\Scripts\python.exe scripts\setup_gpu.py --remote gpu-tts` una vez y sustituya `gpu-tts` por su alias SSH si es necesario. El proceso remoto, las bibliotecas CUDA y ambos modelos se instalan de forma aislada en `%LOCALAPPDATA%\AudioTranscriptGpu`. Repita el comando para actualizar el proceso remoto o instalar modelos que falten.
+- La **GPU NVIDIA remota** necesita Windows x64, Python 3.11, un controlador NVIDIA y Windows OpenSSH con su intérprete predeterminado. Configure el acceso por clave SSH y verifique la clave del host. Ejecute `.\.venv\Scripts\python.exe scripts\setup_gpu.py --remote gpu-tts` una vez y sustituya `gpu-tts` por su alias SSH si es necesario. El instalador añade el proceso remoto, las bibliotecas CUDA y audio.cpp 0.9.6 en `%LOCALAPPDATA%\AudioTranscriptGpu`. audio.cpp requiere un controlador compatible con CUDA 13.3. Use `--worker-only` para un host dedicado a Whisper. Descargue los pesos en `D:\models\audio-transcript` mediante el gestor de modelos.
 
 Seleccione el mismo alias en la aplicación. SSH funciona sin interacción y verifica la clave del host. **Enviando por SSH** indica que el archivo se está transfiriendo. Detener cierra la sesión SSH. Si se pierde la conexión, el proceso remoto termina tras unos 45 segundos sin datos ni señales periódicas. El archivo temporal se elimina al cerrar su descriptor, y la memoria GPU se libera después de cada tarea.
+
+## Gestor de modelos
+
+Seleccione el modo en **Aceleración…** y abra el **Gestor de modelos**. El catálogo incluye 12 modelos con sus archivos, licencias, modos, capacidades y estado comprobado. **Descargar** muestra el progreso real y permite reanudar la descarga. **Eliminar archivos** solo elimina los archivos gestionados del modelo. **Usar modelo seleccionado** aplica un modelo listo.
+
+TXT y Markdown conservan el texto reconocido. Si el modelo devuelve texto atribuido, `transcript.speakers.txt` incluye las etiquetas anónimas y las marcas de tiempo disponibles. Los modelos VibeVoice Streaming proporcionan etiquetas de hablante. Se conserva el estado de una sesión por grabación y se informa de los límites de duración. El temporizador sigue funcionando aunque el modelo no informe de su posición en el audio.
 
 ## Flujo de trabajo
 

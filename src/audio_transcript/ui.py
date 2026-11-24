@@ -37,7 +37,9 @@ from audio_transcript.audio import SUPPORTED_EXTENSIONS, format_duration, probe_
 from audio_transcript.errors import ProcessingFailure
 from audio_transcript.i18n import LANGUAGES, language_manager
 from audio_transcript.paths import INBOX_DIR, ensure_runtime_directories
-from audio_transcript.profiles import PROFILES, PROFILES_BY_KEY
+from audio_transcript.model_catalog import CATALOG, CATALOG_BY_KEY
+from audio_transcript.model_manager import ModelManager
+from audio_transcript.profiles import PROFILES_BY_KEY
 from audio_transcript.queueing import ACTIVE_STATUSES, AddResult, QueueItem, QueueManager, QueueStatus
 from audio_transcript.settings import AppSettings, SettingsStore
 from audio_transcript.worker import BatchWorker, WorkItem
@@ -53,6 +55,7 @@ class MainWindow(QMainWindow):
         self.languages = language_manager()
         self.languages.set_language(self.settings.interface_language)
         self._ui_ready = False
+        self._catalog_status = {}
         self._status_message = None
         self._status_deadline: float | None = None
         self.queue = QueueManager()
@@ -115,6 +118,9 @@ class MainWindow(QMainWindow):
         self.settings_button = QPushButton()
         self.settings_button.clicked.connect(self._open_execution_settings)
         preferences.addWidget(self.settings_button)
+        self.model_manager_button = QPushButton()
+        self.model_manager_button.clicked.connect(self._open_model_manager)
+        preferences.addWidget(self.model_manager_button)
         preferences.addSpacing(18)
         self.language_label = QLabel()
         preferences.addWidget(self.language_label)
@@ -132,7 +138,7 @@ class MainWindow(QMainWindow):
         control_layout.setHorizontalSpacing(18)
         control_layout.setVerticalSpacing(10)
         self.model_combo = QComboBox()
-        for profile in PROFILES:
+        for profile in CATALOG:
             self.model_combo.addItem(profile.display_name, profile.key)
         self.speaker_edit = QLineEdit()
         self.speaker_edit.setPlaceholderText("Optional default for newly added files")
@@ -393,6 +399,7 @@ class MainWindow(QMainWindow):
         self.table.horizontalHeaderItem(4).setToolTip(self.tr('Local date and time added to this queue'))
         self.preview.setPlaceholderText(self.tr('Select a completed file to inspect its transcript.'))
         self.model_label.setText(self.tr("Model"))
+        self.model_manager_button.setText(self.tr("Model Manager"))
         self.speaker_label.setText(self.tr("Speaker"))
         self.output_label.setText(self.tr("Output"))
         self.model_combo.setItemText(0, self.tr("Accuracy — Whisper large-v3"))
@@ -472,9 +479,33 @@ class MainWindow(QMainWindow):
             self.settings.execution_mode = mode.currentData()
             if valid_ssh_alias(alias.text().strip()):
                 self.settings.ssh_alias = alias.text().strip()
+            self._catalog_status.clear()
             self._refresh_execution_mode()
+            self._sync_model_options()
             self._save_settings()
         dialog.deleteLater()
+
+    def _open_model_manager(self) -> None:
+        dialog = ModelManager(
+            self, ExecutionMode(self.settings.execution_mode), self.settings.ssh_alias, self.model_combo.currentData(),
+        )
+        dialog.exec()
+        self._catalog_status = dialog.model_status
+        if dialog.selected_key is not None:
+            self.model_combo.setCurrentIndex(self.model_combo.findData(dialog.selected_key))
+        self._sync_model_options()
+        self._save_settings()
+        dialog.deleteLater()
+
+    def _sync_model_options(self) -> None:
+        mode = ExecutionMode(self.settings.execution_mode)
+        for index, model in enumerate(CATALOG):
+            status = self._catalog_status.get(model.key)
+            if status is None:
+                usable = not model.family or model.key == self.settings.model_profile
+            else:
+                usable = bool(status.get("bytes")) and status.get("runtime") == "ready"
+            self.model_combo.model().item(index).setEnabled(mode in model.modes and bool(usable))
 
     def _toggle_settings(self, expanded: bool) -> None:
         self.settings_panel.setVisible(expanded)
@@ -522,6 +553,7 @@ class MainWindow(QMainWindow):
     def _restore_settings(self) -> None:
         model_index = self.model_combo.findData(self.settings.model_profile)
         self.model_combo.setCurrentIndex(max(0, model_index))
+        self._sync_model_options()
         output_index = self.output_combo.findData(self.settings.output_mode)
         self.output_combo.setCurrentIndex(max(0, output_index))
         self.speaker_edit.setText(self.settings.default_speaker)
@@ -770,7 +802,11 @@ class MainWindow(QMainWindow):
         if mode == ExecutionMode.REMOTE_CUDA and not valid_ssh_alias(self.settings.ssh_alias):
             self._status("Set a valid SSH host alias in Acceleration settings.", 10000)
             return
-        profile = PROFILES_BY_KEY[str(self.model_combo.currentData())]
+        key = str(self.model_combo.currentData())
+        if not self.model_combo.model().item(self.model_combo.currentIndex()).isEnabled():
+            self._status("Choose a model ready for this execution mode in Model Manager.", 10000)
+            return
+        profile = PROFILES_BY_KEY.get(key, CATALOG_BY_KEY[key])
         output_mode = str(self.output_combo.currentData())
         self._processing = True
         self._reset_sort_indicator()
@@ -989,7 +1025,7 @@ class MainWindow(QMainWindow):
             "local_cuda": self.tr("Local GPU processing failed. Check the audio, NVIDIA driver and CUDA setup in README."),
             "remote_cuda": self.tr("GPU processing failed on the SSH host. Check the audio and the host's CUDA setup."),
             "remote_connection": self.tr("The remote job failed. Check the SSH alias, host key, connection and worker setup."),
-            "remote_model_missing": self.tr("The selected model is missing on the SSH host. Rerun the remote GPU setup."),
+            "remote_model_missing": self.tr("The selected model is missing or incomplete on the SSH host. Open Model Manager."),
             "remote_media": self.tr("The SSH host could not decode this file. Check that it contains a readable audio track."),
             "bot_check": self.tr("YouTube requested an anti-bot check. The automatic retry failed. Try Retry Selected later; browser playback may still work."),
             "access_restricted": self.tr("YouTube requires access permissions. This app does not use accounts or browser cookies."),
@@ -1026,6 +1062,7 @@ class MainWindow(QMainWindow):
             self.add_folder_button,
             self.inbox_button,
             self.model_combo,
+            self.model_manager_button,
             self.speaker_edit,
             self.output_combo,
             self.settings_button,
